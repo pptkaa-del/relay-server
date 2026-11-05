@@ -287,7 +287,7 @@ function relay_topic_filter_error(string $f): ?string
 /* Регистрация плат (relay-device через sudo — нужны права root)       */
 /* ------------------------------------------------------------------ */
 
-const RELAY_DEVICE_CLI = '/usr/local/sbin/relay-device';
+const RELAY_DEVICE_CLI = '/usr/local/sbin/relay-device-web';
 
 /** Пароль MQTT платы — как в прошивке: hex первых 16 байт SHA256("relay-{id}") */
 function relay_device_password(int $id): string
@@ -297,14 +297,14 @@ function relay_device_password(int $id): string
 
 /**
  * Запускает relay-device с аргументами (без оболочки). Веб-сервер работает от www-data,
- * поэтому через sudo: install.sh разрешает ему только «relay-device add …» и «relay-device del …».
+ * поэтому через sudo: install.sh разрешает ему только обёртку relay-device-web (add/del).
  * @return array{0: int, 1: string} [код возврата, вывод]
  */
 function relay_device_cli(array $args): array
 {
     $cli = getenv('RELAY_DEVICE_CLI') ?: RELAY_DEVICE_CLI;
     $isRoot = function_exists('posix_geteuid') && posix_geteuid() === 0;
-    $cmd = $isRoot ? array_merge([$cli], $args) : array_merge(['sudo', '-n', $cli], $args);
+    $cmd = $isRoot ? array_merge([$cli], $args) : array_merge(['/usr/bin/sudo', '-n', $cli], $args);
     $proc = @proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
     if (!is_resource($proc)) {
         return [127, 'не удалось запустить relay-device'];

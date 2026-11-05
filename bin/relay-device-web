@@ -1,0 +1,28 @@
+#!/bin/bash
+# Обёртка для веб-панели: её (и только её) www-data может запускать через sudo.
+# Правило sudo без шаблонов в аргументах работает и в классическом sudo, и в sudo-rs
+# (Ubuntu 25.10+), который не поддерживает «команда *» и «Defaults!команда».
+# Разрешены только:  add <ID> [название] [адрес]   и   del <ID>
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+die() { echo "relay-device-web: $*" >&2; exit 2; }
+valid_id() { [[ "${1:-}" =~ ^[1-9][0-9]{0,9}$ ]] && [ "$1" -le 4294967295 ]; }
+clean() { printf '%s' "${1:-}" | tr -d '\000-\037' | head -c 2000; }   # без управляющих символов (длину ограничивает панель)
+
+[ "$(id -u)" -eq 0 ] || die "нужен запуск через sudo"
+case "${1:-}" in
+    add)
+        [ $# -ge 2 ] && [ $# -le 4 ] || die "использование: add <ID> [название] [адрес]"
+        valid_id "$2" || die "неверный ID платы"
+        exec /usr/local/sbin/relay-device add "$2" "$(clean "${3:-}")" "$(clean "${4:-}")"
+        ;;
+    del)
+        [ $# -eq 2 ] || die "использование: del <ID>"
+        valid_id "$2" || die "неверный ID платы"
+        exec /usr/local/sbin/relay-device del "$2"
+        ;;
+    *)
+        die "разрешены только add и del"
+        ;;
+esac

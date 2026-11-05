@@ -197,20 +197,28 @@ EOF
 chown root:www-data "$CONF_DIR" "$CONF_DIR/config.php" "$CONF_DIR/users.php"
 chmod 640 "$CONF_DIR/config.php" "$CONF_DIR/users.php"
 install -m 755 "$SRC_DIR/bin/relay-device" /usr/local/sbin/relay-device
-# Кнопки «Добавить плату» / «Удалить плату» в панели: веб-серверу (www-data) разрешено
-# запускать от root только relay-device add/del (утилита сама проверяет ID и экранирует ввод)
+# Кнопки «Добавить плату» / «Удалить плату» в панели: веб-серверу (www-data) разрешено запускать
+# от root только обёртку relay-device-web (она пропускает лишь add/del и проверяет аргументы).
+# Правило без шаблонов в аргументах и без «Defaults!…» — так его понимает и sudo-rs (Ubuntu 25.10+).
+install -m 755 "$SRC_DIR/bin/relay-device-web" /usr/local/sbin/relay-device-web
 SUDOERS_TMP=$(mktemp)
 cat > "$SUDOERS_TMP" <<'SUDOEOF'
 # relay-server: регистрация плат из веб-панели (создано install.sh)
-Defaults!/usr/local/sbin/relay-device !requiretty
-www-data ALL=(root) NOPASSWD: /usr/local/sbin/relay-device add *, /usr/local/sbin/relay-device del *
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/relay-device-web
 SUDOEOF
-if visudo -cf "$SUDOERS_TMP" >/dev/null; then
+chmod 440 "$SUDOERS_TMP"
+if ! command -v visudo >/dev/null || visudo -cf "$SUDOERS_TMP" >/dev/null 2>&1; then
     install -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/relay-server
 else
+    visudo -cf "$SUDOERS_TMP" || true
     warn "Правило sudo не прошло проверку — кнопка «Добавить плату» работать не будет (используйте relay-device add)"
 fi
 rm -f "$SUDOERS_TMP"
+if sudo -u www-data sudo -n /usr/local/sbin/relay-device-web check >/dev/null 2>&1; [ $? -eq 2 ]; then
+    ok "Добавление плат из панели разрешено (sudo: relay-device-web)"
+else
+    warn "www-data не может запустить relay-device-web через sudo — кнопка «Добавить плату» работать не будет"
+fi
 # команда обновления из git-репозитория, из которого запущена установка
 if [ -d "$SRC_DIR/.git" ]; then
     sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-update" > /usr/local/sbin/relay-update

@@ -144,7 +144,7 @@ switch ($action) {
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
         if ($code !== 0) {
             relay_json(['error' => 'Не удалось зарегистрировать плату в брокере'
-                . ($code === 1 && str_contains($out, 'sudo') ? ' (нет прав sudo — обновите сервер: sudo relay-update)' : '')
+                . (str_contains($out, 'sudo') || str_contains($out, 'afraid') ? ' (нет прав sudo — обновите сервер: sudo relay-update)' : '')
                 . ": $out", 'hint' => "Можно добавить вручную на сервере: sudo relay-device add $id"], 500);
         }
         // 2. подписи реле (relay-device создаёт стандартные «Реле N»)
