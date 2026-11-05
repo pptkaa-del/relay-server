@@ -1,0 +1,8 @@
+[Unit]
+Description=Relay server: requests from the web panel to add/remove boards
+
+[Path]
+PathExistsGlob=/var/lib/relay-server/queue/*.req
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Обработчик запросов веб-панели «Добавить / удалить плату» (запускается systemd от root).
+# Панель (www-data) кладёт в /var/lib/relay-server/queue файл <id>.req со строками:
+#   add | del
+#   <ID платы>
+#   [название]
+#   [адрес]
+# Обработчик передаёт их в relay-device-web (та пропускает только add/del с проверенным ID)
+# и кладёт ответ <id>.res: первая строка — код возврата, далее — вывод.
+set -uo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Q=/var/lib/relay-server/queue
+shopt -s nullglob
+
+for req in "$Q"/*.req; do
+    base=${req%.req}
+    name=$(basename "$base")
+    # только обычные файлы с безопасным именем, по ссылкам не ходим
+    if [[ ! "$name" =~ ^[a-f0-9]{16,64}$ ]] || [ -L "$req" ] || [ ! -f "$req" ]; then
+        rm -f -- "$req"; continue
+    fi
+    mapfile -t ARGS < <(head -c 4096 -- "$req" | head -n 4)
+    rm -f -- "$req"
+    out=$(/usr/local/sbin/relay-device-web "${ARGS[@]}" 2>&1); code=$?
+    tmp=$(mktemp "$Q/.res.XXXXXX")
+    printf '%s\n%s\n' "$code" "$out" > "$tmp"
+    chmod 644 "$tmp"; chgrp www-data "$tmp" 2>/dev/null || true
+    mv -f -- "$tmp" "$base.res"
+done
+# ответы, которые панель так и не забрала
+find "$Q" -maxdepth 1 \( -name '*.res' -o -name '.res.*' \) -mmin +10 -delete 2>/dev/null || true
+exit 0

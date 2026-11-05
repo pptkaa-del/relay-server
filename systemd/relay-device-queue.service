@@ -1,0 +1,6 @@
+[Unit]
+Description=Relay server: process add/remove board requests from the web panel
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/relay-device-queue

@@ -214,10 +214,35 @@ else
     warn "Правило sudo не прошло проверку — кнопка «Добавить плату» работать не будет (используйте relay-device add)"
 fi
 rm -f "$SUDOERS_TMP"
-if sudo -u www-data sudo -n /usr/local/sbin/relay-device-web check >/dev/null 2>&1; [ $? -eq 2 ]; then
-    ok "Добавление плат из панели разрешено (sudo: relay-device-web)"
+# Основной способ для панели — очередь запросов, которую обрабатывает служба systemd от root
+# (не зависит от sudo); sudo-правило выше — запасной вариант.
+install -m 755 "$SRC_DIR/bin/relay-device-queue" /usr/local/sbin/relay-device-queue
+install -d -m 770 -o root -g www-data /var/lib/relay-server /var/lib/relay-server/queue
+chmod 750 /var/lib/relay-server
+install -m 644 "$SRC_DIR/systemd/relay-device-queue.service" /etc/systemd/system/relay-device-queue.service
+install -m 644 "$SRC_DIR/systemd/relay-device-queue.path" /etc/systemd/system/relay-device-queue.path
+systemctl daemon-reload
+systemctl enable relay-device-queue.path >/dev/null 2>&1 || true
+systemctl restart relay-device-queue.path || true
+# самопроверка: запрос «check» от имени www-data должен вернуть код 2 («разрешены только add и del»)
+QOK=0
+REQ=$(openssl rand -hex 16)
+if sudo -u www-data sh -c "printf 'check\n' > /var/lib/relay-server/queue/.$REQ.tmp && mv /var/lib/relay-server/queue/.$REQ.tmp /var/lib/relay-server/queue/$REQ.req"; then
+    for _ in $(seq 1 25); do
+        if [ -f "/var/lib/relay-server/queue/$REQ.res" ]; then
+            [ "$(head -n1 "/var/lib/relay-server/queue/$REQ.res")" = 2 ] && QOK=1
+            rm -f "/var/lib/relay-server/queue/$REQ.res"; break
+        fi
+        sleep 0.2
+    done
+fi
+rm -f "/var/lib/relay-server/queue/$REQ.req"
+if [ $QOK -eq 1 ]; then
+    ok "Кнопка «Добавить плату»: служба relay-device-queue работает"
+elif sudo -u www-data sudo -n /usr/local/sbin/relay-device-web check >/dev/null 2>&1; [ $? -eq 2 ]; then
+    ok "Кнопка «Добавить плату»: работает через sudo (служба relay-device-queue не ответила)"
 else
-    warn "www-data не может запустить relay-device-web через sudo — кнопка «Добавить плату» работать не будет"
+    warn "Кнопка «Добавить плату» не сможет зарегистрировать плату — используйте sudo relay-device add <ID>"
 fi
 # команда обновления из git-репозитория, из которого запущена установка
 if [ -d "$SRC_DIR/.git" ]; then

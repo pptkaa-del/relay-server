@@ -287,7 +287,8 @@ function relay_topic_filter_error(string $f): ?string
 /* Регистрация плат (relay-device через sudo — нужны права root)       */
 /* ------------------------------------------------------------------ */
 
-const RELAY_DEVICE_CLI = '/usr/local/sbin/relay-device-web';
+const RELAY_DEVICE_CLI   = '/usr/local/sbin/relay-device-web';
+const RELAY_DEVICE_QUEUE = '/var/lib/relay-server/queue';
 
 /** Пароль MQTT платы — как в прошивке: hex первых 16 байт SHA256("relay-{id}") */
 function relay_device_password(int $id): string
@@ -296,18 +297,69 @@ function relay_device_password(int $id): string
 }
 
 /**
- * Запускает relay-device с аргументами (без оболочки). Веб-сервер работает от www-data,
- * поэтому через sudo: install.sh разрешает ему только обёртку relay-device-web (add/del).
+ * Выполняет «relay-device add|del …» с правами root. Веб-сервер работает от www-data, поэтому:
+ *  1) основной способ — очередь: файл-запрос в /var/lib/relay-server/queue, его сразу обрабатывает
+ *     служба systemd relay-device-queue (от root) и кладёт ответ;
+ *  2) запасной — sudo relay-device-web (правило без аргументов; работает и с sudo-rs).
  * @return array{0: int, 1: string} [код возврата, вывод]
  */
 function relay_device_cli(array $args): array
 {
-    $cli = getenv('RELAY_DEVICE_CLI') ?: RELAY_DEVICE_CLI;
-    $isRoot = function_exists('posix_geteuid') && posix_geteuid() === 0;
-    $cmd = $isRoot ? array_merge([$cli], $args) : array_merge(['/usr/bin/sudo', '-n', $cli], $args);
+    $args = array_map(fn($a) => str_replace(["\r", "\n", "\0"], ' ', (string)$a), $args);
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        return relay_run_process(array_merge([getenv('RELAY_DEVICE_CLI') ?: RELAY_DEVICE_CLI], $args));
+    }
+    $errors = [];
+    $q = getenv('RELAY_DEVICE_QUEUE') ?: RELAY_DEVICE_QUEUE;
+    if (is_dir($q) && is_writable($q)) {
+        $res = relay_device_queue($q, $args, $timedOut);
+        if (!$timedOut) {
+            return $res;
+        }
+        $errors[] = 'служба relay-device-queue не ответила за 15 с';
+    } else {
+        $errors[] = "нет каталога очереди $q";
+    }
+    [$code, $out] = relay_run_process(array_merge(['/usr/bin/sudo', '-n', getenv('RELAY_DEVICE_CLI') ?: RELAY_DEVICE_CLI], $args));
+    if ($code === 0 || !preg_match('/sudo|afraid|password|not allowed/i', $out)) {
+        return [$code, $out];
+    }
+    $errors[] = "sudo: $out";
+    return [126, implode('; ', $errors)];
+}
+
+/** Запрос через очередь; $timedOut = true, если служба не ответила. */
+function relay_device_queue(string $q, array $args, ?bool &$timedOut): array
+{
+    $timedOut = false;
+    $id = bin2hex(random_bytes(16));
+    $tmp = "$q/.$id.tmp";
+    if (@file_put_contents($tmp, implode("\n", $args) . "\n") === false || !@rename($tmp, "$q/$id.req")) {
+        @unlink($tmp);
+        $timedOut = true;
+        return [1, 'не удалось записать запрос'];
+    }
+    $res = "$q/$id.res";
+    $deadline = microtime(true) + 15;
+    while (microtime(true) < $deadline) {
+        clearstatcache(true, $res);
+        if (is_file($res) && ($data = @file_get_contents($res)) !== false && str_contains($data, "\n")) {
+            @unlink($res);
+            [$code, $out] = explode("\n", $data, 2) + [1 => ''];
+            return [(int)$code, trim($out)];
+        }
+        usleep(200000);
+    }
+    @unlink("$q/$id.req");
+    $timedOut = true;
+    return [1, 'нет ответа'];
+}
+
+function relay_run_process(array $cmd): array
+{
     $proc = @proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
     if (!is_resource($proc)) {
-        return [127, 'не удалось запустить relay-device'];
+        return [127, 'не удалось запустить ' . $cmd[0]];
     }
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
