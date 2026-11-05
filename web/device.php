@@ -74,7 +74,7 @@ layout_head("Плата #$id", 'devices', $login);
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn ghost danger-text" type="button" id="b-delete" style="margin-right:auto">Удалить из панели</button>
+      <button class="btn ghost danger-text" type="button" id="b-delete" style="margin-right:auto">Удалить плату</button>
       <button class="btn" value="cancel" formnovalidate>Отмена</button>
       <button class="btn primary" value="save">Сохранить</button>
     </div>

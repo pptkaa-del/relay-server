@@ -6,12 +6,13 @@
  *   POST action=update id, name, address, coordinates, relay1..relay4 — названия и адрес
  *   POST action=command id, command, relay — команда плате (1..5)
  *   GET  ?action=command_status&cmd_id=N
- *   POST action=delete id             — убрать плату из панели (история сообщений сохраняется)
+ *   POST action=add id, name, address, relay1..relay4 — зарегистрировать новую плату (брокер + панель)
+ *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  */
 require __DIR__ . '/../conectbd.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['update', 'command', 'delete'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
 
@@ -126,12 +127,50 @@ switch ($action) {
     case 'command_status':
         relay_json(['status' => relay_command_status($connect, (int)($_GET['cmd_id'] ?? 0))]);
 
+    case 'add':
+        $raw = trim((string)($_POST['id'] ?? ''));
+        if (!preg_match('/^[1-9][0-9]{0,9}$/', $raw) || (int)$raw > 4294967295) {
+            relay_json(['error' => 'ID платы — целое число от 1 без ведущих нулей (как в меню настройки платы)'], 400);
+        }
+        $id = (int)$raw;
+        $exists = relay_q($connect, 'SELECT 1 FROM general_info WHERE id = ? UNION SELECT 1 FROM devices WHERE id = ?', [$id, $id]);
+        if ($exists && mysqli_num_rows($exists) > 0) {
+            relay_json(['error' => "Плата #$id уже есть в панели"], 409);
+        }
+        $f = fn($k, $max) => mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST[$k] ?? ''))), 0, $max);
+        $name = $f('name', 200) ?: "Устройство $id";
+        $address = $f('address', 300);
+        // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
+        [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
+        if ($code !== 0) {
+            relay_json(['error' => 'Не удалось зарегистрировать плату в брокере'
+                . ($code === 1 && str_contains($out, 'sudo') ? ' (нет прав sudo — обновите сервер: sudo relay-update)' : '')
+                . ": $out", 'hint' => "Можно добавить вручную на сервере: sudo relay-device add $id"], 500);
+        }
+        // 2. подписи реле (relay-device создаёт стандартные «Реле N»)
+        $relays = [];
+        for ($i = 1; $i <= 4; $i++) {
+            $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
+        }
+        relay_q($connect, 'UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ? WHERE id = ?',
+            [$relays[1], $relays[2], $relays[3], $relays[4], $id]);
+        relay_event($connect, $id, 'info', 'Плата зарегистрирована в панели', 'info', null, $login);
+        relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
+            'username' => "relay-$id", 'password' => relay_device_password($id), 'topic' => "com/$id",
+        ]]);
+
     case 'delete':
         $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            relay_json(['error' => 'Не указана плата'], 400);
+        }
+        [$code, $out] = relay_device_cli(['del', (string)$id]);
         relay_q($connect, 'DELETE FROM devices WHERE id = ?', [$id]);      // каскадом: relay_states, commands, device_last_update
         relay_q($connect, 'DELETE FROM general_info WHERE id = ?', [$id]);
         relay_q($connect, 'DELETE FROM device_events WHERE device_id = ?', [$id]);
-        relay_json(['ok' => true, 'note' => "Доступ платы к брокеру закрывается командой: sudo relay-device del $id"]);
+        relay_json(['ok' => true, 'note' => $code === 0
+            ? 'Доступ платы к брокеру закрыт.'
+            : "Не удалось закрыть доступ к брокеру автоматически ($out). Выполните на сервере: sudo relay-device del $id"]);
 
     default:
         relay_json(['error' => 'Неизвестное действие'], 400);

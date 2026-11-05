@@ -9,6 +9,7 @@ layout_head('Устройства', 'devices', $login);
     <h1>Устройства</h1>
     <p id="lastmsg">Загрузка…</p>
   </div>
+  <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить плату</button>
 </div>
 
 <div class="tiles" id="tiles">
@@ -29,5 +30,40 @@ layout_head('Устройства', 'devices', $login);
 </div>
 
 <div class="devgrid" id="grid"><div class="card empty" style="grid-column:1/-1">Загрузка…</div></div>
+
+<dialog class="modal" id="add">
+  <form method="dialog" id="add-form">
+    <div class="modal-head"><h2>Новая плата</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-body">
+      <p class="muted" style="margin-top:0">Укажите ID, заданный в меню настройки платы (пункт 1). Сервер создаст для неё
+        учётную запись в брокере — логин и пароль плата вычисляет из ID сама, вводить их в плату не нужно.</p>
+      <div class="form-grid">
+        <label class="field">ID платы<input class="input" name="id" type="number" min="1" step="1" required placeholder="например, 12"></label>
+        <label class="field">Название объекта<input class="input" name="name" maxlength="200" placeholder="Шкаф ТП-12"></label>
+        <label class="field full">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
+        <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="Реле 1"></label>
+        <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="Реле 2"></label>
+        <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="Реле 3"></label>
+        <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="Реле 4"></label>
+      </div>
+      <div class="result" id="add-result"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" value="cancel" formnovalidate>Отмена</button>
+      <button class="btn primary" id="add-submit" type="submit">Добавить</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="added">
+  <div class="modal-head"><h2>Плата добавлена</h2><button class="btn ghost sm" data-close>✕</button></div>
+  <div class="modal-body">
+    <p style="margin-top:0">Плата появится «на связи», как только подключится к серверу.</p>
+    <dl class="kv" id="added-info"></dl>
+    <p class="muted">Если плата сейчас подключена к другому серверу, в прошивке нужно указать адрес этого сервера
+      (<span class="mono">mqtt.setServer(...)</span>) и перепрошить её.</p>
+  </div>
+  <div class="modal-foot"><a class="btn" id="added-open" href="#">Открыть плату</a><button class="btn primary" data-close>Готово</button></div>
+</dialog>
 
 <?php layout_foot(['devices.js']); ?>

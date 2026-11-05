@@ -120,7 +120,7 @@ if [ -z "$ADMIN_PASS" ] && [ ! -s "$CONF_DIR/users.php" ]; then ADMIN_PASS=$(gen
 # ----------------------------------------------------------------------------
 log "Установка пакетов"
 export DEBIAN_FRONTEND=noninteractive
-PKGS="mosquitto mosquitto-clients mariadb-server apache2 libapache2-mod-php php-cli php-mysql php-mbstring openssl ca-certificates curl"
+PKGS="mosquitto mosquitto-clients mariadb-server apache2 libapache2-mod-php php-cli php-mysql php-mbstring openssl ca-certificates curl sudo"
 [ -n "$DOMAIN" ] && PKGS="$PKGS certbot python3-certbot-apache"
 apt-get update -q
 # shellcheck disable=SC2086
@@ -197,6 +197,20 @@ EOF
 chown root:www-data "$CONF_DIR" "$CONF_DIR/config.php" "$CONF_DIR/users.php"
 chmod 640 "$CONF_DIR/config.php" "$CONF_DIR/users.php"
 install -m 755 "$SRC_DIR/bin/relay-device" /usr/local/sbin/relay-device
+# Кнопки «Добавить плату» / «Удалить плату» в панели: веб-серверу (www-data) разрешено
+# запускать от root только relay-device add/del (утилита сама проверяет ID и экранирует ввод)
+SUDOERS_TMP=$(mktemp)
+cat > "$SUDOERS_TMP" <<'SUDOEOF'
+# relay-server: регистрация плат из веб-панели (создано install.sh)
+Defaults!/usr/local/sbin/relay-device !requiretty
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/relay-device add *, /usr/local/sbin/relay-device del *
+SUDOEOF
+if visudo -cf "$SUDOERS_TMP" >/dev/null; then
+    install -m 440 -o root -g root "$SUDOERS_TMP" /etc/sudoers.d/relay-server
+else
+    warn "Правило sudo не прошло проверку — кнопка «Добавить плату» работать не будет (используйте relay-device add)"
+fi
+rm -f "$SUDOERS_TMP"
 # команда обновления из git-репозитория, из которого запущена установка
 if [ -d "$SRC_DIR/.git" ]; then
     sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-update" > /usr/local/sbin/relay-update

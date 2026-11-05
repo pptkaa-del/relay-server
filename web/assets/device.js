@@ -157,8 +157,8 @@
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }
   });
   $('#b-delete').addEventListener('click', async () => {
-    if (!confirm(`Удалить плату #${id} из панели? Её состояние и журнал событий будут удалены.\nЕсли плата снова пришлёт данные, она появится заново.`)) return;
-    try { const j = await api('/api/devices.php', { action: 'delete', id }, true); alert('Плата удалена из панели.\n' + j.note); location.href = '/index.php'; }
+    if (!confirm(`Удалить плату #${id}?\nЕё доступ к брокеру будет закрыт, состояние и журнал событий — удалены.\nВернуть плату можно кнопкой «Добавить плату».`)) return;
+    try { const j = await api('/api/devices.php', { action: 'delete', id }, true); alert('Плата удалена.\n' + j.note); location.href = '/index.php'; }
     catch (e) { toast(e.message, 'err'); }
   });
 

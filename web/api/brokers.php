@@ -33,6 +33,17 @@ function broker_public(array $b): array
     return $b;
 }
 
+/** Проверяет и нормализует список подписок; при ошибке отвечает 400. */
+function broker_topics(string $raw): string
+{
+    [$ok, $err] = relay_parse_topics($raw === '' ? '#' : $raw);
+    if ($err) {
+        relay_json(['error' => 'Неверная подписка ' . implode('; ', $err)
+            . '. Укажите фильтры через запятую, например: «#» (всё) или «stat, rep, com/#».'], 400);
+    }
+    return implode(', ', $ok ?: ['#']);
+}
+
 function broker_input(mysqli $db): array
 {
     $s = fn($k, $max = 255) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
@@ -44,7 +55,7 @@ function broker_input(mysqli $db): array
         'tls_verify' => empty($_POST['tls_verify']) ? 0 : 1,
         'username' => $s('username'),
         'password' => (string)($_POST['password'] ?? ''),
-        'topics' => $s('topics', 1000) ?: '#',
+        'topics' => broker_topics($s('topics', 1000)),
         'enabled' => isset($_POST['enabled']) && $_POST['enabled'] === '0' ? 0 : 1,
         'is_local' => 0,
     ];
@@ -80,7 +91,7 @@ switch ($action) {
         if ($existing && (int)$existing['is_local'] === 1) {
             // у собственного брокера меняются только имя и подписки
             $name = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 100) ?: 'Локальный брокер';
-            $topics = mb_substr(trim((string)($_POST['topics'] ?? '')), 0, 1000) ?: '#';
+            $topics = broker_topics(mb_substr(trim((string)($_POST['topics'] ?? '')), 0, 1000));
             relay_q($connect, 'UPDATE mqtt_brokers SET name = ?, topics = ? WHERE id = ?', [$name, $topics, $id]);
             relay_json(['ok' => true, 'id' => $id]);
         }
@@ -103,7 +114,16 @@ switch ($action) {
         $b = ($existing && (int)$existing['is_local'] === 1) ? $existing : broker_input($connect);
         $t = microtime(true);
         try {
+            // проверяем не только вход, но и подписки: на неверный фильтр брокер разрывает соединение
             $client = relay_mqtt_client($b, 'relay_test_' . bin2hex(random_bytes(4)), 5);
+            foreach (relay_parse_topics((string)$b['topics'])[0] as $filter) {
+                $client->subscribe($filter, fn() => null, 0);
+            }
+            // loop(…, exitWhenQueuesEmpty) при активных подписках не завершается — ждём ответы брокера 2 с вручную
+            $start = microtime(true);
+            while (microtime(true) - $start < 2) {
+                $client->loopOnce($start, true, 50000);
+            }
             $client->disconnect();
             relay_json(['ok' => true, 'ms' => (int)round((microtime(true) - $t) * 1000)]);
         } catch (Throwable $e) {

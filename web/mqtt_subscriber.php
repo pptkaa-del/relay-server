@@ -349,8 +349,15 @@ function connectBroker(int $id): void
     $p = relay_broker_params($b);
     try {
         $client = relay_mqtt_client($b, 'relay_server_' . $id . '_' . substr(md5(gethostname() . __DIR__), 0, 8), (int)$b['is_local'] ? 10 : 5);
-        $topics = array_filter(array_map('trim', explode(',', (string)$b['topics'] ?: '#')));
-        foreach ($topics ?: ['#'] as $t) {
+        [$topics, $bad] = relay_parse_topics((string)$b['topics'] ?: '#');
+        if ($bad) {
+            // неверный фильтр брокер не принимает и разрывает соединение — пропускаем его
+            writeLog("«{$b['name']}»: пропущены неверные подписки: " . implode('; ', $bad), 'WARN');
+        }
+        if (!$topics) {
+            throw new RuntimeException('нет ни одной верной подписки: ' . implode('; ', $bad));
+        }
+        foreach ($topics as $t) {
             $client->subscribe($t, function ($topic, $message, $retained) use ($id) {
                 global $conns;
                 onMessage($conns[$id]['cfg'], $topic, $message, (bool)$retained);
@@ -359,7 +366,12 @@ function connectBroker(int $id): void
         $conns[$id]['client'] = $client;
         $conns[$id]['backoff'] = 2;
         setBrokerStatus($id, 'connected');
-        writeLog("подключено: «{$b['name']}» {$p['host']}:{$p['port']} (" . implode(', ', $topics ?: ['#']) . ')');
+        writeLog("подключено: «{$b['name']}» {$p['host']}:{$p['port']} (" . implode(', ', $topics) . ')');
+        if ($bad) {
+            setBrokerStatus($id, 'connected');
+            relay_q(db(), 'UPDATE mqtt_brokers SET last_error = ?, updated_at = updated_at WHERE id = ?',
+                ['Пропущены неверные подписки: ' . implode('; ', $bad), $id]);
+        }
     } catch (Throwable $e) {
         $conns[$id]['client'] = null;
         $conns[$id]['retry_at'] = microtime(true) + $conns[$id]['backoff'];

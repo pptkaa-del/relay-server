@@ -91,7 +91,7 @@ layout_head('Монитор', 'monitor', $login);
         <label class="field">Порт<input class="input" name="port" type="number" min="1" max="65535" value="1883" required></label>
         <label class="field">Логин<input class="input" name="username" autocomplete="off"></label>
         <label class="field">Пароль<input class="input" name="password" type="password" autocomplete="new-password" placeholder=""></label>
-        <label class="field full">Подписки (через запятую)<input class="input" name="topics" value="#" placeholder="#  или  stat, rep, com/#"></label>
+        <label class="field full">Подписки (через запятую)<input class="input" name="topics" value="#" placeholder="#  или  stat, rep, com/#"><span class="muted">«#» — все сообщения. Знак # ставится только отдельно или в конце: com/#</span></label>
         <label class="check"><input type="checkbox" name="use_tls"> TLS (обычно порт 8883)</label>
         <label class="check"><input type="checkbox" name="tls_verify" checked> проверять сертификат</label>
         <label class="check"><input type="checkbox" name="enabled" checked> подключаться</label>

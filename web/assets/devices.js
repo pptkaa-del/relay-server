@@ -64,7 +64,8 @@
     const grid = $('#grid');
     if (!devices.length) {
       grid.innerHTML = `<div class="card empty" style="grid-column:1/-1">${ICONS.server}<div><b>Плат пока нет</b></div>
-        <p>Зарегистрируйте плату на сервере командой <code>sudo relay-device add &lt;ID&gt; "Название"</code>.<br>После подключения она появится здесь автоматически.</p></div>`;
+        <p>Нажмите «Добавить плату» и укажите ID из меню настройки платы.<br>После подключения она появится здесь «на связи».</p>
+        <button class="btn primary" data-open-add>Добавить плату</button></div>`;
       return;
     }
     grid.innerHTML = list.length ? list.map(cardHtml).join('') : '<div class="card empty" style="grid-column:1/-1">Нет плат по выбранному фильтру</div>';
@@ -120,6 +121,37 @@
       finally { cb.disabled = false; }
     }
   });
+
+  /* ---------- Добавление платы ---------- */
+  const addDlg = $('#add'), addForm = $('#add-form'), F = k => addForm.elements[k];
+  function openAdd() {
+    addForm.reset(); $('#add-result').textContent = ''; $('#add-result').className = 'result';
+    addDlg.showModal(); F('id').focus();
+  }
+  $('#b-add').addEventListener('click', openAdd);
+  $('#grid').addEventListener('click', e => { if (e.target.closest('[data-open-add]')) openAdd(); });
+  addForm.addEventListener('submit', async e => {
+    if (e.submitter && e.submitter.value === 'cancel') return;
+    e.preventDefault();
+    const p = { action: 'add' };
+    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4']) p[k] = F(k).value.trim();
+    const btn = $('#add-submit'), res = $('#add-result');
+    btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую плату в брокере…';
+    try {
+      const j = await api('/api/devices.php', p, true);
+      addDlg.close();
+      $('#added-info').innerHTML = `<dt>ID платы</dt><dd class="mono">${j.id}</dd>
+        <dt>MQTT логин</dt><dd class="mono">${esc(j.mqtt.username)}</dd>
+        <dt>MQTT пароль</dt><dd class="mono" style="word-break:break-all">${esc(j.mqtt.password)}</dd>
+        <dt>Топик команд</dt><dd class="mono">${esc(j.mqtt.topic)}</dd>`;
+      $('#added-open').href = '/device.php?id=' + j.id;
+      $('#added').showModal();
+      toast(`Плата #${j.id} добавлена`, 'ok');
+      load().catch(() => {});
+    } catch (er) { res.className = 'result err'; res.textContent = er.message; }
+    finally { btn.disabled = false; }
+  });
+  $('#added').addEventListener('click', e => { if (e.target.closest('[data-close]')) $('#added').close(); });
 
   load().catch(e => { $('#grid').innerHTML = `<div class="card empty" style="grid-column:1/-1">${esc(e.message)}</div>`; });
   App.every(5000, load);

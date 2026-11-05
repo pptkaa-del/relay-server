@@ -251,6 +251,71 @@ function relay_publish(array $broker, string $topic, string $payload, int $qos =
     }
 }
 
+/**
+ * Разбирает список подписок «stat, rep com/#» (через запятую, пробел или перевод строки).
+ * @return array{0: string[], 1: string[]} [верные фильтры, ошибки]
+ */
+function relay_parse_topics(string $s): array
+{
+    $ok = $err = [];
+    foreach (preg_split('/[\s,;]+/u', trim($s), -1, PREG_SPLIT_NO_EMPTY) as $f) {
+        $e = relay_topic_filter_error($f);
+        $e === null ? $ok[] = $f : $err[] = "«{$f}»: $e";
+    }
+    return [array_values(array_unique($ok)), $err];
+}
+
+/** Проверка фильтра подписки по правилам MQTT. null — фильтр верный. */
+function relay_topic_filter_error(string $f): ?string
+{
+    if (strlen($f) > 1000 || str_contains($f, "\0")) {
+        return 'слишком длинный или содержит недопустимые символы';
+    }
+    $levels = explode('/', $f);
+    foreach ($levels as $i => $lvl) {
+        if (str_contains($lvl, '#') && ($lvl !== '#' || $i !== count($levels) - 1)) {
+            return 'знак # допускается только целым последним уровнем: «#» или «com/#»';
+        }
+        if (str_contains($lvl, '+') && $lvl !== '+') {
+            return 'знак + допускается только целым уровнем: «com/+»';
+        }
+    }
+    return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Регистрация плат (relay-device через sudo — нужны права root)       */
+/* ------------------------------------------------------------------ */
+
+const RELAY_DEVICE_CLI = '/usr/local/sbin/relay-device';
+
+/** Пароль MQTT платы — как в прошивке: hex первых 16 байт SHA256("relay-{id}") */
+function relay_device_password(int $id): string
+{
+    return substr(hash('sha256', "relay-$id"), 0, 32);
+}
+
+/**
+ * Запускает relay-device с аргументами (без оболочки). Веб-сервер работает от www-data,
+ * поэтому через sudo: install.sh разрешает ему только «relay-device add …» и «relay-device del …».
+ * @return array{0: int, 1: string} [код возврата, вывод]
+ */
+function relay_device_cli(array $args): array
+{
+    $cli = getenv('RELAY_DEVICE_CLI') ?: RELAY_DEVICE_CLI;
+    $isRoot = function_exists('posix_geteuid') && posix_geteuid() === 0;
+    $cmd = $isRoot ? array_merge([$cli], $args) : array_merge(['sudo', '-n', $cli], $args);
+    $proc = @proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($proc)) {
+        return [127, 'не удалось запустить relay-device'];
+    }
+    fclose($pipes[0]);
+    $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    return [proc_close($proc), trim($out)];
+}
+
 /* ------------------------------------------------------------------ */
 /* Команды платам                                                      */
 /* ------------------------------------------------------------------ */
