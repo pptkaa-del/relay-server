@@ -1,0 +1,122 @@
+#!/bin/bash
+# Управление релейными платами: учётные записи MQTT, права доступа (ACL) и запись в БД.
+#
+#   sudo relay-device add  <ID> ["Название"] ["Адрес"]  — добавить плату
+#   sudo relay-device del  <ID>                         — удалить доступ платы к брокеру
+#   sudo relay-device list                              — список плат
+#   sudo relay-device pass <ID>                         — показать MQTT-логин и пароль платы
+#   sudo relay-device sync-acl                          — пересобрать ACL из файла паролей
+#   sudo relay-device user-add <логин> [пароль]         — добавить/сменить пароль пользователя веб-панели
+#   sudo relay-device user-del <логин>                  — удалить пользователя веб-панели
+set -euo pipefail
+
+ENV_FILE=/etc/relay-server/install.env
+PASSWD=/etc/mosquitto/passwd
+ACL=/etc/mosquitto/relay.acl
+USERS=/etc/relay-server/users.php
+
+[ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo" >&2; exit 1; }
+[ -r "$ENV_FILE" ] || { echo "Не найден $ENV_FILE — сначала выполните install.sh" >&2; exit 1; }
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+
+die() { echo "Ошибка: $*" >&2; exit 1; }
+check_id() { [[ "${1:-}" =~ ^[1-9][0-9]{0,9}$ ]] || die "ID платы должен быть целым числом без ведущих нулей"; }
+sql_str() { local s=${1//\\/\\\\}; printf "'%s'" "${s//\'/\'\'}"; }
+db() { mysql --default-character-set=utf8mb4 "$DB_NAME" "$@"; }
+
+# Пароль платы — как в прошивке: hex первых 16 байт SHA256("relay-<ID>")
+device_pass() { printf 'relay-%s' "$1" | sha256sum | cut -c1-32; }
+
+reload_mosquitto() {
+    systemctl is-active --quiet mosquitto || return 0   # брокер не запущен — новые файлы прочитает при старте
+    systemctl reload mosquitto 2>/dev/null || systemctl restart mosquitto \
+        || echo "Внимание: не удалось перезагрузить mosquitto, см. journalctl -u mosquitto" >&2
+}
+
+sync_acl() {
+    local tmp
+    tmp=$(mktemp)
+    {
+        echo "# Сгенерировано relay-device. Не редактируйте вручную."
+        echo "user $MQTT_USER"
+        echo "topic readwrite #"
+        echo
+        # «|| true»: если плат ещё нет, grep ничего не находит, а с pipefail это прервало бы скрипт
+        { grep -oE '^relay-[0-9]+:' "$PASSWD" 2>/dev/null || true; } | tr -d ':' | sort -t- -k2 -n | while read -r u; do
+            id=${u#relay-}
+            printf 'user %s\ntopic read com/%s\ntopic write stat\ntopic write rep\n\n' "$u" "$id"
+        done
+    } > "$tmp"
+    install -m 600 -o mosquitto -g mosquitto "$tmp" "$ACL"
+    rm -f "$tmp"
+}
+
+case "${1:-}" in
+    add)
+        check_id "${2:-}"
+        id=$2; name=${3:-"Устройство $id"}; addr=${4:-}
+        pass=$(device_pass "$id")
+        mosquitto_passwd -b "$PASSWD" "relay-$id" "$pass" 2>/dev/null || die "mosquitto_passwd: не удалось записать $PASSWD"
+        chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
+        sync_acl
+        # для уже существующей платы меняем только явно переданные название/адрес
+        upd="id = id"
+        [ $# -ge 3 ] && upd="$upd, name_obj = VALUES(name_obj)"
+        [ $# -ge 4 ] && upd="$upd, address = VALUES(address)"
+        db -e "INSERT INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
+               VALUES ($id, $(sql_str "$name"), $(sql_str "$addr"), '', 'Реле 1', 'Реле 2', 'Реле 3', 'Реле 4')
+               ON DUPLICATE KEY UPDATE $upd;"
+        reload_mosquitto
+        echo "Плата $id добавлена."
+        echo "  MQTT логин:  relay-$id"
+        echo "  MQTT пароль: $pass"
+        echo "  Топик команд: com/$id"
+        ;;
+    del)
+        check_id "${2:-}"
+        mosquitto_passwd -D "$PASSWD" "relay-$2" 2>/dev/null || true
+        sync_acl
+        reload_mosquitto
+        echo "Доступ платы $2 к брокеру удалён (история в БД сохранена)."
+        echo "Удалить плату из панели: mysql $DB_NAME -e 'DELETE FROM general_info WHERE id=$2; DELETE FROM devices WHERE id=$2;'"
+        ;;
+    list)
+        db -t -e "SELECT g.id AS ID, g.name_obj AS Название, g.address AS Адрес,
+                         d.last_seen AS 'Последний stat',
+                         CASE WHEN d.last_seen IS NULL THEN 'нет данных'
+                              WHEN d.status = 0 OR d.last_seen < NOW() - INTERVAL 350 SECOND THEN 'оффлайн'
+                              WHEN d.status = 2 THEN 'ошибка' ELSE 'онлайн' END AS Статус
+                  FROM general_info g LEFT JOIN devices d ON d.id = g.id ORDER BY g.id;"
+        ;;
+    pass)
+        check_id "${2:-}"
+        echo "MQTT логин:  relay-$2"
+        echo "MQTT пароль: $(device_pass "$2")"
+        ;;
+    sync-acl)
+        sync_acl; reload_mosquitto; echo "ACL обновлён: $ACL"
+        ;;
+    user-add)
+        login=${2:-}; [[ "$login" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]] || die "логин: латиница, цифры, _ . @ -"
+        pw=${3:-}
+        if [ -z "$pw" ]; then read -r -s -p "Пароль для $login: " pw; echo; fi
+        [ ${#pw} -ge 6 ] || die "пароль короче 6 символов"
+        RELAY_LOGIN="$login" RELAY_PASS="$pw" php -r '
+            $f = $argv[1]; $u = is_file($f) ? require $f : [];
+            $u[getenv("RELAY_LOGIN")] = password_hash(getenv("RELAY_PASS"), PASSWORD_DEFAULT);
+            file_put_contents($f, "<?php\nreturn " . var_export($u, true) . ";\n");' "$USERS"
+        chown root:www-data "$USERS"; chmod 640 "$USERS"
+        echo "Пользователь панели $login сохранён."
+        ;;
+    user-del)
+        RELAY_LOGIN="${2:-}" php -r '
+            $f = $argv[1]; $u = require $f; unset($u[getenv("RELAY_LOGIN")]);
+            file_put_contents($f, "<?php\nreturn " . var_export($u, true) . ";\n");' "$USERS"
+        echo "Пользователь панели ${2:-} удалён."
+        ;;
+    *)
+        sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

@@ -1,0 +1,18 @@
+#!/bin/bash
+# Обновление сервера из git-репозитория: git pull + повторный запуск install.sh
+# (пароли, пользователи и данные сохраняются). Параметры передаются в install.sh.
+set -euo pipefail
+SRC_DIR="@SRC_DIR@"
+[ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo: sudo relay-update" >&2; exit 1; }
+cd "$SRC_DIR"
+git() { command git -c safe.directory="$SRC_DIR" "$@"; }   # клон мог быть сделан другим пользователем
+echo "→ Обновление из $(git remote get-url origin 2>/dev/null || echo "$SRC_DIR")"
+before=$(git rev-parse --short HEAD)
+git pull --ff-only
+after=$(git rev-parse --short HEAD)
+if [ "$before" = "$after" ]; then
+    echo "  Новых изменений нет ($after), установка будет выполнена повторно."
+else
+    echo "  $before → $after:"; git log --oneline "$before..$after" | sed 's/^/    /'
+fi
+exec bash "$SRC_DIR/install.sh" "$@"

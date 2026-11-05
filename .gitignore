@@ -1,0 +1,9 @@
+# сборка Arduino
+firmware/**/build/
+# локальные архивы и временные файлы
+*.zip
+*.tar.gz
+*.log
+.DS_Store
+# настройки с паролями никогда не попадают в репозиторий (они живут в /etc/relay-server)
+config.php

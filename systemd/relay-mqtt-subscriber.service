@@ -1,0 +1,22 @@
+[Unit]
+Description=Relay server: MQTT subscriber (stat/rep -> MariaDB)
+After=network-online.target mosquitto.service mariadb.service
+Wants=network-online.target mosquitto.service mariadb.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/relay
+ExecStart=/usr/bin/php /var/www/relay/mqtt_subscriber.php
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
