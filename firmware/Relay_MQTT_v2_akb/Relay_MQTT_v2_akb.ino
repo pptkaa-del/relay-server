@@ -45,9 +45,12 @@ struct stat_t {
   uint32_t version;
   uint32_t r1, r2, r3, r4;
   uint32_t stat;
-  uint32_t sl;
+  uint32_t sl;      // уровень сигнала GSM: CSQ 0..31, 99 — нет данных
   uint32_t alarm;   // 0 = нет аварии, 1 = питание от АКБ / неожиданный LOW на реле N
+  uint32_t bat_adc; // протокол v2: напряжение АКБ — среднее значение АЦП (A0, 0..1023); в вольты пересчитывает сервер
 } __attribute__((packed));
+
+const uint32_t PROTOCOL_VERSION = 2;  // v2: в stat добавлено поле bat_adc (40 байт)
 
 struct rep_t {
   uint32_t id;
@@ -73,6 +76,9 @@ static uint32_t mqttReconnectFailCount = 0;
 static unsigned long lastCheck = 0;
 
 const unsigned long MAX_PUBLISH_INTERVAL = 300000;
+const unsigned long SIGNAL_UPDATE_INTERVAL = 60000;   // опрос уровня сигнала GSM (AT+CSQ)
+static unsigned long lastSignalUpdate = 0;
+static uint32_t signalQuality = 99;                   // последнее значение CSQ, 99 — неизвестно
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;
 const unsigned long WATCHDOG_INTERVAL = 1000;
 const uint32_t MAX_MQTT_FAILS_BEFORE_RESET = 5;
@@ -414,24 +420,45 @@ void initGSM() {
   }
 }
 
+// ====================== СИГНАЛ И АКБ ======================
+// Уровень сигнала запрашиваем у модема заранее (в loop), а не внутри publishStat:
+// publishStat вызывается и из MQTT-callback, где AT-команда к модему нежелательна.
+void updateSignalQuality() {
+  int16_t csq = modem.getSignalQuality();
+  signalQuality = (csq >= 0 && csq <= 31) ? (uint32_t)csq : 99;
+  lastSignalUpdate = millis();
+  Serial.printf("Сигнал GSM: CSQ=%u\n", signalQuality);
+}
+
+// Напряжение АКБ: среднее из 16 измерений АЦП (A0) — меньше шума
+uint32_t readBatteryAdc() {
+  uint32_t sum = 0;
+  for (int i = 0; i < 16; i++) {
+    sum += analogRead(A0);
+    delay(2);
+  }
+  return sum / 16;
+}
+
 // ====================== MQTT ======================
 void publishStat() {
   stat_t s = {
     .id = settings.id_i, 
-    .version = 1,
+    .version = PROTOCOL_VERSION,
     .r1 = current_state[0] == HIGH ? 1 : 0, 
     .r2 = current_state[1] == HIGH ? 1 : 0,
     .r3 = current_state[2] == HIGH ? 1 : 0,
     .r4 = current_state[3] == HIGH ? 1 : 0,
     .stat =  1,
-    .sl = analogRead(A0),
-    .alarm = alarmNow
+    .sl = signalQuality,
+    .alarm = alarmNow,
+    .bat_adc = readBatteryAdc()
   };
 
   bool ret = mqtt.publish(statTopic.c_str(), (uint8_t*)&s, sizeof(stat_t), true);
   memcpy(last_r_states, current_state, 4);
   if (ret) {
-    Serial.println("stat опубликован (retain=true)");
+    Serial.printf("stat опубликован (retain=true): CSQ=%u, АЦП АКБ=%u\n", s.sl, s.bat_adc);
   }
   else {
     Serial.println("stat publish error");
@@ -605,7 +632,7 @@ void setup() {
 
   Serial.begin(115200);
   delay(5000);
-  Serial.println("\n=== Прошивка MQTT v2.1 (по обновлённому протоколу, команда 5 = перезагрузка) ===");
+  Serial.println("\n=== Прошивка MQTT v2.2 (протокол v2: сигнал GSM + АЦП АКБ, команда 5 = перезагрузка) ===");
 
   pinMode(RsRes, OUTPUT); 
   pulseWatchdog();
@@ -664,6 +691,7 @@ void setup() {
   current_state[3] = pcf8574.digitalRead(reley_kontrol_4);
   if (mqtt.connected())
   {
+      updateSignalQuality();   // первый stat — уже с реальным уровнем сигнала
       publishStat();
       first_cmd_ms = millis();
   }
@@ -689,6 +717,9 @@ void loop() {
     }
   }
   else {
+    if (lastSignalUpdate == 0 || millis() - lastSignalUpdate > SIGNAL_UPDATE_INTERVAL) {
+      updateSignalQuality();
+    }
     // публикация stat: по изменению ИЛИ каждые 300 сек
     if (millis() - lastCheck > 500) {
       current_state[0] = pcf8574.digitalRead(reley_kontrol_1);

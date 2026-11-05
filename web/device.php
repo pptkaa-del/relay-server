@@ -52,6 +52,11 @@ layout_head("Плата #$id", 'devices', $login);
       <div class="card-head"><h2>Последнее поступление данных</h2></div>
       <div class="card-body" id="lastdata"><span class="muted">Загрузка…</span></div>
     </section>
+    <section class="card o-bat">
+      <div class="card-head"><h2>Напряжение АКБ</h2>
+        <div class="seg" id="bat-range"><button data-h="24" class="on">24 ч</button><button data-h="168">7 дн</button></div></div>
+      <div class="card-body" id="battery"><span class="muted">Загрузка…</span></div>
+    </section>
     <section class="card o-info">
       <div class="card-head"><h2>Сведения</h2></div>
       <div class="card-body"><dl class="kv" id="info"></dl></div>
@@ -71,6 +76,18 @@ layout_head("Плата #$id", 'devices', $login);
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60"></label>
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60"></label>
+        <fieldset class="fieldset">
+          <legend>Калибровка напряжения АКБ</legend>
+          <p class="hint">Подайте на вход АКБ платы 19 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
+            затем то же для 26 В. Напряжение считается по прямой через эти две точки.</p>
+          <p class="hint" id="cal-current"></p>
+          <div class="form-grid">
+            <div class="cal-row"><label class="field">АЦП при 19 В<input class="input" name="cal_adc_19" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_adc_19">Текущее</button></div>
+            <div class="cal-row"><label class="field">АЦП при 26 В<input class="input" name="cal_adc_26" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_adc_26">Текущее</button></div>
+          </div>
+        </fieldset>
       </div>
     </div>
     <div class="modal-foot">

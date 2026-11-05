@@ -102,12 +102,19 @@ function handleStat(array $d, bool $retained): void
             relay_q($c, 'INSERT IGNORE INTO relay_states (device_id, relay_num, state, updated_at) VALUES (?, ?, ?, ?)', [$id, $i, $r[$i], $ts]);
         }
         relay_q($c, 'INSERT IGNORE INTO device_last_update (device_id, device_name, last_update, last_change) VALUES (?, ?, ?, ?)', [$id, $name, $ts, $ts]);
+        if (isset($d['bat_adc'])) {
+            relay_q($c, 'UPDATE devices SET bat_adc = ?, bat_adc_at = NOW() WHERE id = ?', [(int)$d['bat_adc'], $id]);
+        }
+        relay_q($c, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($c, $id, 'created', 'Плата впервые вышла на связь', 'success', $d);
         writeLog("STAT: создано новое устройство $id");
         return;
     }
 
     relay_q($c, 'UPDATE devices SET last_data_at = NOW(), last_data_topic = ?, msg_count = msg_count + 1 WHERE id = ?', ['stat', $id]);
+    if (isset($d['bat_adc'])) {
+        relay_q($c, 'UPDATE devices SET bat_adc = ?, bat_adc_at = NOW() WHERE id = ?', [(int)$d['bat_adc'], $id]);
+    }
 
     // 2. Retained-сообщение (старое состояние из брокера): обновляем данные, но не last_seen
     if ($retained) {
@@ -242,8 +249,48 @@ function cleanupLogs(): void
     }
 }
 
+/**
+ * Сообщения журнала брокера ($SYS/broker/log/N, нужен «log_dest topic» в mosquitto):
+ * «Client relay-id12-v1 disconnected, not authorised.» — плата 12 не зарегистрирована.
+ */
+function handleBrokerLog(string $line): void
+{
+    static $lastIp = null;
+    if (preg_match('/New connection from ([0-9a-fA-F:.\[\]]+?):\d+ on port/', $line, $m)) {
+        $lastIp = $m[1];
+        return;
+    }
+    if (!preg_match('/Client (relay-id([1-9]\d{0,9})-v\d+) disconnected, not authorised/', $line, $m)) {
+        return;
+    }
+    $id = (int)$m[2];
+    if ($id > 4294967295) {
+        return;
+    }
+    $c = db();
+    $known = relay_q($c, 'SELECT 1 FROM general_info WHERE id = ?', [$id]);
+    if ($known && mysqli_num_rows($known) > 0) {
+        // плата есть в панели, но брокер её не пускает — скорее всего, нет учётной записи MQTT
+        static $warned = [];
+        if (!isset($warned[$id]) || time() - $warned[$id] > 3600) {
+            $warned[$id] = time();
+            relay_event($c, $id, 'info', 'Брокер не пускает плату (not authorised). Проверьте ID в плате или выполните: sudo relay-device add ' . $id, 'error');
+        }
+    }
+    relay_q($c, 'INSERT INTO pending_devices (id, client_id, ip, attempts, first_seen, last_seen) VALUES (?, ?, ?, 1, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE client_id = VALUES(client_id), ip = COALESCE(VALUES(ip), ip),
+                                         attempts = attempts + 1, last_seen = NOW()', [$id, $m[1], $lastIp]);
+    $lastIp = null;
+}
+
 function onMessage(array $broker, string $topic, string $message, bool $retained): void
 {
+    if (str_starts_with($topic, '$SYS/')) {
+        if ((int)$broker['is_local'] === 1 && str_starts_with($topic, '$SYS/broker/log/')) {
+            try { handleBrokerLog($message); } catch (Throwable $e) { writeLog('журнал брокера: ' . $e->getMessage(), 'ERROR'); }
+        }
+        return; // служебные сообщения брокера в журнал не пишем
+    }
     $local = (int)$broker['is_local'] === 1;
     // Свои команды com/{id} журналирует отправитель; retained-копии при переподключении не дублируем
     if ($local && str_starts_with($topic, 'com/')) {
@@ -357,9 +404,17 @@ function connectBroker(int $id): void
         if (!$topics) {
             throw new RuntimeException('нет ни одной верной подписки: ' . implode('; ', $bad));
         }
+        if ((int)$b['is_local'] === 1) {
+            $topics[] = '$SYS/broker/log/N'; // попытки подключения незарегистрированных плат
+        }
         foreach ($topics as $t) {
-            $client->subscribe($t, function ($topic, $message, $retained) use ($id) {
+            $client->subscribe($t, function ($topic, $message, $retained) use ($id, $t) {
                 global $conns;
+                // php-mqtt сопоставляет «#» и с $SYS/… (по стандарту MQTT — не должно), из-за чего
+                // служебное сообщение пришло бы дважды: $SYS принимаем только от подписки на $SYS
+                if (str_starts_with($topic, '$') !== str_starts_with($t, '$')) {
+                    return;
+                }
                 onMessage($conns[$id]['cfg'], $topic, $message, (bool)$retained);
             }, 1);
         }

@@ -47,6 +47,7 @@
         <span class="item mono">#${d.id}</span>
         <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) + ' (' + esc(d.last_data_topic || '') + ')' : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
         <span class="item">${signalBars(d.signal_level)}</span>
+        ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
         ${d.alarm === 1 && d.online ? `<span class="badge alarm">${ICONS.battery}АКБ</span>` : ''}
       </div>
       <div class="relays">${d.relays.map(r => relayHtml(d, r)).join('')}</div>
@@ -124,17 +125,39 @@
 
   /* ---------- Добавление платы ---------- */
   const addDlg = $('#add'), addForm = $('#add-form'), F = k => addForm.elements[k];
-  function openAdd() {
+  function openAdd(prefillId) {
     addForm.reset(); $('#add-result').textContent = ''; $('#add-result').className = 'result';
-    addDlg.showModal(); F('id').focus();
+    if (prefillId) F('id').value = prefillId;
+    addDlg.showModal(); (prefillId ? F('name') : F('id')).focus();
   }
-  $('#b-add').addEventListener('click', openAdd);
+  $('#b-add').addEventListener('click', () => openAdd());
   $('#grid').addEventListener('click', e => { if (e.target.closest('[data-open-add]')) openAdd(); });
+  // /index.php?add=12 — открыть форму сразу (ссылка из монитора)
+  const addParam = new URLSearchParams(location.search).get('add');
+  if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
+
+  /* ---------- Незарегистрированные платы ---------- */
+  async function loadPending() {
+    const list = (await api('/api/devices.php', { action: 'pending' })).pending;
+    $('#pending').classList.toggle('hidden', !list.length);
+    $('#pending-list').innerHTML = list.map(p => `<div class="pending-row">
+      <div><b>Плата #${p.id}</b> <span class="mono muted">${esc(p.client_id)}</span>
+        <div class="muted" style="font-size:12.5px">попыток подключения: ${p.attempts} · последняя ${ago(p.last_ts)}${p.ip ? ' · IP ' + esc(p.ip) : ''}</div></div>
+      <div class="btn-row"><button class="btn sm primary" data-padd="${p.id}">Добавить</button>
+        <button class="btn sm ghost" data-pign="${p.id}" title="Скрыть из списка">Скрыть</button></div></div>`).join('');
+  }
+  $('#pending').addEventListener('click', async e => {
+    const a = e.target.closest('[data-padd]'), ig = e.target.closest('[data-pign]');
+    if (a) openAdd(a.dataset.padd);
+    if (ig) { try { await api('/api/devices.php', { action: 'pending_ignore', id: ig.dataset.pign }, true); loadPending(); } catch (er) { toast(er.message, 'err'); } }
+  });
+  loadPending().catch(() => {});
+  App.every(15000, loadPending);
   addForm.addEventListener('submit', async e => {
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_19', 'cal_adc_26']) p[k] = F(k).value.trim();
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую плату в брокере…';
     try {
@@ -147,7 +170,7 @@
       $('#added-open').href = '/device.php?id=' + j.id;
       $('#added').showModal();
       toast(`Плата #${j.id} добавлена`, 'ok');
-      load().catch(() => {});
+      load().catch(() => {}); loadPending().catch(() => {});
     } catch (er) { res.className = 'result err'; res.textContent = er.message; }
     finally { btn.disabled = false; }
   });

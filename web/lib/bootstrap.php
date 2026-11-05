@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.1';
+const RELAY_VERSION       = '3.2';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -153,6 +153,9 @@ function relay_decode(string $topic, string $payload): ?array
     if ($topic === 'stat' && $len >= 32) {
         $d = unpack('Vid/Vversion/Vr1/Vr2/Vr3/Vr4/Vstat/Vsl', substr($payload, 0, 32));
         $d['alarm'] = $len >= 36 ? unpack('V', substr($payload, 32, 4))[1] : 0;
+        if ($len >= 40) { // протокол v2: АЦП напряжения АКБ
+            $d['bat_adc'] = unpack('V', substr($payload, 36, 4))[1];
+        }
         return ['type' => 'stat'] + $d;
     }
     if ($topic === 'rep' && $len >= 12) {
@@ -192,6 +195,39 @@ function relay_event(mysqli $db, int $deviceId, string $type, string $message, s
     relay_q($db, 'INSERT INTO device_events (device_id, type, level, message, data, user_login) VALUES (?, ?, ?, ?, ?, ?)',
         [$deviceId, $type, $level, mb_substr($message, 0, 500),
          $data === null ? null : json_encode($data, JSON_UNESCAPED_UNICODE), $user]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Напряжение АКБ                                                      */
+/* ------------------------------------------------------------------ */
+
+const RELAY_BAT_V_LOW  = 19.0; // опорные точки калибровки
+const RELAY_BAT_V_HIGH = 26.0;
+
+/**
+ * Пересчёт АЦП в вольты по двум точкам калибровки платы (АЦП при 19 В и при 26 В).
+ * null — нет данных или калибровки.
+ */
+function relay_battery_voltage($adc, $adc19, $adc26): ?float
+{
+    if ($adc === null || $adc19 === null || $adc26 === null || (int)$adc19 === (int)$adc26) {
+        return null;
+    }
+    $v = RELAY_BAT_V_LOW + ((int)$adc - (int)$adc19) * (RELAY_BAT_V_HIGH - RELAY_BAT_V_LOW) / ((int)$adc26 - (int)$adc19);
+    return round(max(0.0, $v), 2);
+}
+
+/** Значение калибровки из формы: '' → null, иначе 0..65535 */
+function relay_cal_value($v): ?int
+{
+    $v = trim((string)$v);
+    if ($v === '') {
+        return null;
+    }
+    if (!preg_match('/^\d{1,5}$/', $v) || (int)$v > 65535) {
+        throw new RuntimeException('Значение АЦП — целое число от 0 до 65535');
+    }
+    return (int)$v;
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,7 +298,12 @@ function relay_parse_topics(string $s): array
         $e = relay_topic_filter_error($f);
         $e === null ? $ok[] = $f : $err[] = "«{$f}»: $e";
     }
-    return [array_values(array_unique($ok)), $err];
+    $ok = array_values(array_unique($ok));
+    // «#» и так включает всё (кроме $SYS): остальные фильтры дали бы дубли сообщений
+    if (in_array('#', $ok, true)) {
+        $ok = array_values(array_filter($ok, fn($f) => $f === '#' || str_starts_with($f, '$')));
+    }
+    return [$ok, $err];
 }
 
 /** Проверка фильтра подписки по правилам MQTT. null — фильтр верный. */

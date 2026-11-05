@@ -91,6 +91,14 @@ const App = (() => {
     return `<span class="signal s${lvl}" title="Сигнал ${sl}/31 — ${word}"><i></i><i></i><i></i><i></i></span>`;
   }
 
+  /** Напряжение АКБ: цвет по уровню (24-вольтовая АКБ: < 22 В — плохо, < 24 В — внимание) */
+  const batClass = v => v == null ? 'raw' : v < 22 ? 'bad' : v < 24 ? 'warn' : 'ok';
+  function batteryHtml(d) {
+    if (d.bat_voltage != null) return `<span class="bat ${batClass(d.bat_voltage)}" title="Напряжение АКБ (АЦП ${d.bat_adc})">${ICONS.battery}${d.bat_voltage.toFixed(1)} В</span>`;
+    if (d.bat_adc != null) return `<span class="bat raw" title="АКБ не откалибрована — укажите значения АЦП при 19 В и 26 В">${ICONS.battery}АЦП ${d.bat_adc}</span>`;
+    return '';
+  }
+
   const ICONS = {
     in: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>',
     out: '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
@@ -129,7 +137,7 @@ const App = (() => {
     if (!d) return '<span class="tag">двоичные данные</span>';
     if (d.type === 'stat') {
       const rel = [d.r1, d.r2, d.r3, d.r4].map((v, i) => `${i + 1}:${RSTATE[v] ?? v}`).join(' ');
-      return `<b>stat</b> · плата #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl}${d.alarm ? ' · <span class="badge alarm">АКБ</span>' : ''}`;
+      return `<b>stat</b> · плата #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}`;
     }
     if (d.type === 'rep') return `<b>rep</b> · плата #${d.id} · команда ${d.cmd_id} · ${d.success === 1 ? '<span class="badge success">выполнена</span>' : '<span class="badge error">не выполнена</span>'}`;
     if (d.type === 'com') return `<b>${esc(d.command_name)}</b>${[1, 2, 3].includes(d.command) ? ' · ' + (d.rel_number ? 'реле ' + d.rel_number : 'все реле') : ''} · cmd_id ${d.cmd_id}`;
@@ -171,5 +179,5 @@ const App = (() => {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(t); run(); } });
   }
 
-  return { cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  return { batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

@@ -48,7 +48,8 @@ switch ($action) {
     case 'devices':
         // Платы, приславшие stat в этот брокер: последнее состояние и время
         $rows = relay_rows(relay_q($connect,
-            "SELECT m.device_id AS id, m.decoded, UNIX_TIMESTAMP(m.ts) AS ts, g.name_obj
+            "SELECT m.device_id AS id, m.decoded, UNIX_TIMESTAMP(m.ts) AS ts, g.name_obj,
+                    EXISTS(SELECT 1 FROM general_info gi WHERE gi.id = m.device_id) AS registered
                FROM mqtt_messages m
                JOIN (SELECT device_id, MAX(id) AS mid FROM mqtt_messages
                       WHERE broker_id = ? AND topic = 'stat' AND device_id IS NOT NULL GROUP BY device_id) x ON x.mid = m.id
@@ -67,6 +68,7 @@ switch ($action) {
                 'signal' => $d['sl'] ?? null,
                 'alarm' => $d['alarm'] ?? 0,
                 'state' => !$fresh || ($d['stat'] ?? 1) === 0 ? 'offline' : (($d['stat'] ?? 1) === 2 ? 'error' : 'online'),
+                'registered' => (bool)$r['registered'],
             ];
         }
         relay_json(['devices' => $out]);

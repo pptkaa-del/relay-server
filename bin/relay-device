@@ -41,6 +41,7 @@ sync_acl() {
         echo "# Сгенерировано relay-device. Не редактируйте вручную."
         echo "user $MQTT_USER"
         echo "topic readwrite #"
+        echo 'topic read $SYS/broker/log/#'
         echo
         # «|| true»: если плат ещё нет, grep ничего не находит, а с pipefail это прервало бы скрипт
         { grep -oE '^relay-[0-9]+:' "$PASSWD" 2>/dev/null || true; } | tr -d ':' | sort -t- -k2 -n | while read -r u; do

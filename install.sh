@@ -331,6 +331,8 @@ listener $MQTT_PORT 0.0.0.0
 $TLS_BLOCK
 
 connection_messages true
+# журнал брокера ещё и в топик \$SYS/broker/log/… — так панель видит незарегистрированные платы
+log_dest topic
 log_timestamp true
 log_timestamp_format %Y-%m-%d %H:%M:%S
 max_queued_messages 1000

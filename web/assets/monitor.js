@@ -115,14 +115,16 @@
     const on = devices.filter(d => d.state === 'online' || d.state === 'alarm').length;
     $('#devcount').textContent = devices.length ? `${on} / ${devices.length} на связи` : '';
     $('#devices').innerHTML = devices.length ? devices.map(d => `
-      <button class="side-item ${d.id === selected ? 'sel' : ''}" data-id="${d.id}">
+      <div class="side-item ${d.id === selected ? 'sel' : ''}" data-id="${d.id}" role="button" tabindex="0">
         <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
         <div class="side-item-meta">${d.ts ? 'данные ' + ago(d.ts) : 'данных не было'}${d.signal != null ? ' · сигнал ' + d.signal : ''}${d.alarm === 1 ? ' · <span style="color:var(--warn)">АКБ</span>' : ''}</div>
         <div class="mini-relays">${d.relays.map((s, i) => `<span class="${s === 1 ? 'on' : s === 2 ? 'er' : ''}">${i + 1}</span>`).join('')}</div>
-      </button>`).join('')
+        ${!b.is_local && d.registered === false ? `<a class="btn sm" style="margin-top:8px" href="/index.php?add=${d.id}" title="Зарегистрировать плату на этом сервере">+ Добавить в систему</a>` : ''}
+      </div>`).join('')
       : `<div class="empty">${b.is_local ? 'Плат пока нет' : 'Плат не видно. Платы появляются здесь, как только пришлют stat в этот брокер.'}</div>`;
   }
   $('#devices').addEventListener('click', e => {
+    if (e.target.closest('a')) return; // ссылка «Добавить в систему»
     const it = e.target.closest('.side-item'); if (!it) return;
     selectDevice(+it.dataset.id === selected ? 0 : +it.dataset.id);
   });

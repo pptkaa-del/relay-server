@@ -148,3 +148,30 @@ CREATE TABLE IF NOT EXISTS `device_events` (
 
 -- исправление имени, записанного в неверной кодировке ранними версиями установщика
 UPDATE `mqtt_brokers` SET `name` = 'Локальный брокер' WHERE `is_local` = 1 AND `name` LIKE 'Ð%';
+
+-- ---------------------------------------------------------------------------
+-- v3.2: напряжение АКБ, обнаружение незарегистрированных плат
+-- ---------------------------------------------------------------------------
+
+-- Последнее значение АЦП напряжения АКБ (поле bat_adc пакета stat, протокол v2)
+ALTER TABLE `devices`
+    ADD COLUMN IF NOT EXISTS `bat_adc` INT(11) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `bat_adc_at` TIMESTAMP NULL DEFAULT NULL;
+
+-- Калибровка делителя АКБ: значения АЦП при 19 В и при 26 В (линейная зависимость)
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `cal_adc_19` INT(11) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `cal_adc_26` INT(11) DEFAULT NULL;
+
+-- Платы, которые пытались подключиться к брокеру, но не зарегистрированы
+-- (по сообщениям брокера «Client relay-id12-v1 disconnected, not authorised.»)
+CREATE TABLE IF NOT EXISTS `pending_devices` (
+    `id` INT(11) NOT NULL PRIMARY KEY,
+    `client_id` VARCHAR(100) NOT NULL,
+    `ip` VARCHAR(64) DEFAULT NULL,
+    `attempts` INT UNSIGNED NOT NULL DEFAULT 1,
+    `first_seen` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `last_seen` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `ignored` TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX `idx_last_seen` (`last_seen`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -29,6 +29,12 @@ layout_head('Устройства', 'devices', $login);
   </div>
 </div>
 
+<section class="card attention hidden" id="pending">
+  <div class="card-head"><h2>Обнаружены незарегистрированные платы</h2>
+    <span class="muted">пытаются подключиться к брокеру, но не добавлены в систему</span></div>
+  <div id="pending-list"></div>
+</section>
+
 <div class="devgrid" id="grid"><div class="card empty" style="grid-column:1/-1">Загрузка…</div></div>
 
 <dialog class="modal" id="add">
@@ -45,6 +51,15 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="Реле 2"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="Реле 3"></label>
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="Реле 4"></label>
+        <fieldset class="fieldset">
+          <legend>Калибровка напряжения АКБ (необязательно)</legend>
+          <p class="hint">Подайте на вход АКБ платы 19 В и 26 В от лабораторного источника и запишите показания АЦП —
+            их видно на странице платы и в мониторе (поле «АЦП АКБ» пакета stat). Калибровку можно задать и позже.</p>
+          <div class="form-grid">
+            <label class="field">АЦП при 19 В<input class="input" name="cal_adc_19" type="number" min="0" max="65535" step="1" placeholder="например, 590"></label>
+            <label class="field">АЦП при 26 В<input class="input" name="cal_adc_26" type="number" min="0" max="65535" step="1" placeholder="например, 808"></label>
+          </div>
+        </fieldset>
       </div>
       <div class="result" id="add-result"></div>
     </div>
