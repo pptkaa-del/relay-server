@@ -25,6 +25,8 @@
 //   * проверка ввода в меню: ID без ведущих нулей (иначе логин/топик не совпадали с сервером),
 //     номер реле 1–4 (значение 5 приводило к выходу за границы массива);
 //   * Wi-Fi выключен (не используется): меньше потребление от АКБ и шум АЦП.
+//   * начальные (заводские) параметры задаются в блоке «ЗАВОДСКИЕ НАСТРОЙКИ» ниже;
+//     пункт меню 8 — сброс к заводским настройкам с полной очисткой EEPROM.
 // =============================================================================
 #define TINY_GSM_MODEM_SIM800
 
@@ -37,6 +39,31 @@
 #include <SoftwareSerial.h>
 
 #define FW_VERSION "2.3-nopin"
+
+// =============================================================================
+//  ЗАВОДСКИЕ НАСТРОЙКИ — начальные значения параметров меню настройки.
+//  Плата использует их:
+//    * при первом запуске (EEPROM пустая или повреждена);
+//    * после «Сброса к заводским настройкам» (пункт 8 меню);
+//    * один раз после прошивки, если APPLY_DEFAULTS_ON_FLASH = 1.
+//  Задав значения здесь перед прошивкой, можно не вводить их вручную через меню.
+// =============================================================================
+#define DEFAULT_DEVICE_ID     1                // пункт 1: ID платы, 1..4294967295, без ведущих нулей
+#define DEFAULT_ALARM_RELAY   4                // пункт 4: реле контроля питания шкафа, 1..4
+#define DEFAULT_SERVER_HOST   "185.209.29.25"  // пункт 5: адрес сервера MQTT, домен или IP
+#define DEFAULT_SERVER_PORT   1883             // пункт 6: порт сервера MQTT
+#define DEFAULT_APN           ""               // пункт 7: APN оператора, "" — по умолчанию SIM-карты
+
+// 0 — при перепрошивке настройки платы из EEPROM сохраняются (обычное обновление прошивки);
+// 1 — после прошивки ЭТОЙ сборки плата один раз применит значения выше, даже если уже была настроена
+//     (удобно при выпуске: задать DEFAULT_DEVICE_ID и прошить). Повторные перезагрузки их не трогают.
+#define APPLY_DEFAULTS_ON_FLASH 0
+
+static_assert(DEFAULT_DEVICE_ID >= 1 && DEFAULT_DEVICE_ID <= 4294967295ULL, "DEFAULT_DEVICE_ID: число от 1 до 4294967295");
+static_assert(DEFAULT_ALARM_RELAY >= 1 && DEFAULT_ALARM_RELAY <= 4, "DEFAULT_ALARM_RELAY: 1..4");
+static_assert(sizeof(DEFAULT_SERVER_HOST) > 1 && sizeof(DEFAULT_SERVER_HOST) <= 64, "DEFAULT_SERVER_HOST: 1..63 символа");
+static_assert(DEFAULT_SERVER_PORT >= 1 && DEFAULT_SERVER_PORT <= 65535, "DEFAULT_SERVER_PORT: 1..65535");
+static_assert(sizeof(DEFAULT_APN) <= 32, "DEFAULT_APN: до 31 символа");
 
 SoftwareSerial GSMport(D3, D4);
 PCF8574 pcf8574(0x20);
@@ -61,8 +88,7 @@ const RelayPin RELAYS[4] = {
 // ====================== НАСТРОЙКИ (EEPROM) ======================
 // Поля до magic совпадают с прошивками v2.0–v2.2, поэтому сохранённые ID и PIN не теряются.
 const uint32_t SETTINGS_MAGIC = 0x52454C33;  // "REL3": заполнены поля v2.3
-const char DEFAULT_SERVER_HOST[] = "185.209.29.25";
-const uint16_t DEFAULT_SERVER_PORT = 1883;
+const int EEPROM_SIZE = 512;
 
 struct settings_t {
   uint32_t id_i;
@@ -75,6 +101,7 @@ struct settings_t {
   char server_host[64];                  // домен или IP сервера MQTT
   uint16_t server_port;
   char apn[32];                          // APN оператора (пусто — по умолчанию SIM-карты)
+  uint32_t build_stamp;                  // отпечаток сборки, к которой применялись заводские настройки
 };
 settings_t settings;
 
@@ -260,35 +287,75 @@ void applySettings() {
   clientID = "relay-id" + idStr + "-v1";
 }
 
+// Отпечаток сборки (дата и время компиляции): по нему APPLY_DEFAULTS_ON_FLASH узнаёт новую прошивку
+uint32_t buildStamp() {
+  const char* b = __DATE__ " " __TIME__;
+  uint32_t h = 2166136261u;  // FNV-1a
+  while (*b) {
+    h ^= (uint8_t)*b++;
+    h *= 16777619u;
+  }
+  return h;
+}
+
+// Заводские настройки из блока «ЗАВОДСКИЕ НАСТРОЙКИ» в начале файла
+void applyFactoryDefaults() {
+  memset(&settings, 0, sizeof(settings_t));
+  settings.id_i = DEFAULT_DEVICE_ID;
+  strncpy(settings.pin_sim, "0000", sizeof(settings.pin_sim) - 1);  // поле не используется
+  settings.bat_alarm_relay = DEFAULT_ALARM_RELAY - 1;
+  settings.magic = SETTINGS_MAGIC;
+  strncpy(settings.server_host, DEFAULT_SERVER_HOST, sizeof(settings.server_host) - 1);
+  settings.server_port = DEFAULT_SERVER_PORT;
+  strncpy(settings.apn, DEFAULT_APN, sizeof(settings.apn) - 1);
+  settings.build_stamp = buildStamp();
+}
+
 void loadSettings() {
-  EEPROM.begin(512);
+  EEPROM.begin(EEPROM_SIZE);
   EEPROM.get(0, settings);
 
   size_t pinLen = strnlen(settings.pin_sim, sizeof(settings.pin_sim));
   bool baseValid = settings.id_i != 0 && settings.id_i != 0xFFFFFFFF && pinLen <= 4
                    && settings.current_pin_failed_attempts <= 10 && settings.global_pin_failed_attempts <= 10
                    && settings.bat_alarm_relay <= 3;
+  bool v23Valid = settings.magic == SETTINGS_MAGIC && isValidHost(settings.server_host)
+                  && settings.server_port != 0 && isPrintableField(settings.apn, sizeof(settings.apn));
+
   if (!baseValid) {
-    memset(&settings, 0, sizeof(settings_t));
-    settings.id_i = 1;
-    settings.bat_alarm_relay = 3;
-    strcpy(settings.pin_sim, "0000");
-    Serial.println("EEPROM сброшен → id=1");
-  }
-  // поля v2.3: после обновления со старой прошивки там мусор — заполняем значениями по умолчанию
-  if (!baseValid || settings.magic != SETTINGS_MAGIC || !isValidHost(settings.server_host)
-      || settings.server_port == 0 || !isPrintableField(settings.apn, sizeof(settings.apn))) {
+    applyFactoryDefaults();
+    saveSettings();
+    Serial.println("EEPROM пуста или повреждена → заводские настройки из прошивки");
+  } else if (APPLY_DEFAULTS_ON_FLASH && settings.build_stamp != buildStamp()) {
+    applyFactoryDefaults();
+    saveSettings();
+    Serial.println("Новая прошивка с APPLY_DEFAULTS_ON_FLASH=1 → применены заводские настройки из прошивки");
+  } else if (!v23Valid) {
+    // обновление с прошивки до v2.3: ID, PIN и реле питания сохраняем, новые поля — заводские
     settings.magic = SETTINGS_MAGIC;
     memset(settings.server_host, 0, sizeof(settings.server_host));
     strncpy(settings.server_host, DEFAULT_SERVER_HOST, sizeof(settings.server_host) - 1);
     settings.server_port = DEFAULT_SERVER_PORT;
     memset(settings.apn, 0, sizeof(settings.apn));
-    Serial.println("Настройки сервера по умолчанию: " + String(DEFAULT_SERVER_HOST) + ":" + String(DEFAULT_SERVER_PORT));
+    strncpy(settings.apn, DEFAULT_APN, sizeof(settings.apn) - 1);
+    settings.build_stamp = buildStamp();
     saveSettings();
+    Serial.println("Настройки сервера по умолчанию: " + String(settings.server_host) + ":" + String(settings.server_port));
   }
   applySettings();
   Serial.printf("EEPROM прочитан → id=%u, реле питания: %u, сервер %s:%u, APN \"%s\"\n",
                 settings.id_i, settings.bat_alarm_relay + 1, settings.server_host, settings.server_port, settings.apn);
+}
+
+// Полный сброс: вся EEPROM заполняется 0xFF (как чистая), затем записываются заводские настройки
+void factoryReset() {
+  for (int i = 0; i < EEPROM_SIZE; i++) EEPROM.write(i, 0xFF);
+  EEPROM.commit();
+  applyFactoryDefaults();
+  saveSettings();
+  Serial.println("EEPROM очищена, записаны заводские настройки. Перезагрузка...");
+  delay(500);
+  ESP.restart();
 }
 
 // ====================== МЕНЮ НАСТРОЙКИ (UART 115200) ======================
@@ -338,6 +405,7 @@ void printMenu() {
   Serial.println("5 - Адрес сервера MQTT, домен или IP (текущее: " + String(settings.server_host) + ")");
   Serial.println("6 - Порт сервера MQTT (текущее: " + String(settings.server_port) + ")");
   Serial.println("7 - APN оператора (текущее: " + String(strlen(settings.apn) ? settings.apn : "по умолчанию SIM") + ")");
+  Serial.println("8 - Сброс к заводским настройкам (полная очистка EEPROM)");
   Serial.println("9 - Выход");
 }
 
@@ -415,6 +483,16 @@ void enterSetupMode() {
         } else {
           Serial.println("APN — до 31 латинского символа");
         }
+      }
+    } else if (choice == '8') {
+      Serial.println("ВНИМАНИЕ! Будут стёрты ВСЕ настройки платы (вся EEPROM) и записаны заводские значения из прошивки:");
+      Serial.printf("  ID %u, реле питания %u, сервер %s:%u, APN \"%s\"\n", (uint32_t)DEFAULT_DEVICE_ID,
+                    (uint32_t)DEFAULT_ALARM_RELAY, DEFAULT_SERVER_HOST, (uint32_t)DEFAULT_SERVER_PORT, DEFAULT_APN);
+      Serial.println("После сброса плата перезагрузится.");
+      if (readConfirmed("Для подтверждения введите RESET (другой ввод — отмена):", v) && v == "RESET") {
+        factoryReset();
+      } else {
+        Serial.println("Сброс отменён");
       }
     } else if (choice == '9') {
       break;
