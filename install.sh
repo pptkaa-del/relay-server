@@ -25,6 +25,7 @@
 #     --events-retention ДНЕЙ  сколько дней хранить журнал событий плат (по умолчанию 180)
 #     --devices "1 2 3"      сразу добавить платы с этими ID
 #     --no-firewall          не настраивать ufw
+#     --no-auto-update       не включать автообновление из git (таймер relay-update.timer, раз в 10 минут)
 #     --replace-xampp        остановить и отключить старую установку XAMPP (/opt/lampp)
 # =============================================================================
 set -euo pipefail
@@ -36,7 +37,7 @@ ENV_FILE=$CONF_DIR/install.env
 CRED_FILE=/root/relay-server-credentials.txt
 
 ADMIN_USER=admin; ADMIN_PASS=""; DOMAIN=""; EMAIL=""; TZ_NAME=Europe/Moscow
-MQTT_PORT=1883; DB_NAME_ARG=""; RETENTION=14; EV_RETENTION=180; DEVICES=""; FIREWALL=1; REPLACE_XAMPP=0
+MQTT_PORT=1883; DB_NAME_ARG=""; RETENTION=14; EV_RETENTION=180; DEVICES=""; FIREWALL=1; REPLACE_XAMPP=0; AUTO_UPDATE=1
 
 log()  { printf '\n\033[1;34m→ %s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m✔\033[0m %s\n' "$*"; }
@@ -58,6 +59,7 @@ while [ $# -gt 0 ]; do
         --events-retention) EV_RETENTION=$2; shift 2 ;;
         --devices)       DEVICES=$2; shift 2 ;;
         --no-firewall)   FIREWALL=0; shift ;;
+        --no-auto-update) AUTO_UPDATE=0; shift ;;
         --replace-xampp) REPLACE_XAMPP=1; shift ;;
         -h|--help)       sed -n '2,/^# =\{10,\}$/p' "$0" | sed '1d;$d;s/^# \{0,1\}//'; exit 0 ;;
         *) die "Неизвестный параметр: $1 (см. --help)" ;;
@@ -246,8 +248,19 @@ else
 fi
 # команда обновления из git-репозитория, из которого запущена установка
 if [ -d "$SRC_DIR/.git" ]; then
-    sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-update" > /usr/local/sbin/relay-update
-    chmod 755 /usr/local/sbin/relay-update
+    sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-update" > /usr/local/sbin/relay-update.new
+    chmod 755 /usr/local/sbin/relay-update.new
+    mv -f /usr/local/sbin/relay-update.new /usr/local/sbin/relay-update   # атомарно: скрипт мог быть запущен
+    install -m 644 "$SRC_DIR/systemd/relay-update.service" /etc/systemd/system/relay-update.service
+    install -m 644 "$SRC_DIR/systemd/relay-update.timer" /etc/systemd/system/relay-update.timer
+    systemctl daemon-reload
+    if [ "$AUTO_UPDATE" -eq 1 ]; then
+        systemctl enable --now relay-update.timer >/dev/null 2>&1 || true
+        ok "Автообновление из git включено: проверка раз в 10 минут (relay-update.timer)"
+    else
+        systemctl disable --now relay-update.timer >/dev/null 2>&1 || true
+        ok "Автообновление выключено (--no-auto-update)"
+    fi
 fi
 if [ "$NEW_ADMIN" -eq 1 ]; then
     relay-device user-add "$ADMIN_USER" "$ADMIN_PASS" >/dev/null
@@ -493,7 +506,7 @@ $( [ "$NEW_ADMIN" -eq 1 ] && echo " Пароль:         $ADMIN_PASS" || echo "
 
  Добавить плату:         sudo relay-device add <ID> "Название" "Адрес"
  Список плат:            sudo relay-device list
- Обновить сервер:        sudo relay-update   (если установлено из git-репозитория)
+ Обновить сервер:        sudo relay-update   (автоматически — раз в 10 минут, journalctl -u relay-update)
  Логи подписчика:        journalctl -u relay-mqtt-subscriber -f
  Логи брокера:           tail -f /var/log/mosquitto/mosquitto.log
  Следить за MQTT:        mosquitto_sub -h 127.0.0.1 -p $MQTT_PORT -u $MQTT_USER -P '<пароль>' -t '#' -v

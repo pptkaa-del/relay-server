@@ -1,0 +1,9 @@
+[Unit]
+Description=Relay server: auto-update from git repository (if there are new commits)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/relay-update --if-changed
+TimeoutStartSec=30min

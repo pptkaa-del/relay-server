@@ -1,18 +1,52 @@
 #!/bin/bash
 # Обновление сервера из git-репозитория: git pull + повторный запуск install.sh
-# (пароли, пользователи и данные сохраняются). Параметры передаются в install.sh.
+# (пароли, пользователи и данные сохраняются). Остальные параметры передаются в install.sh.
+#
+#   sudo relay-update                 — обновить сейчас (установка выполняется даже без новых коммитов)
+#   sudo relay-update --if-changed    — только если в репозитории есть новые коммиты
+#                                       (так запускает таймер автообновления relay-update.timer)
+#   systemctl status relay-update.timer          — состояние автообновления
+#   journalctl -u relay-update -n 50             — журнал автообновлений
+#   sudo systemctl disable --now relay-update.timer   — выключить автообновление
 set -euo pipefail
 SRC_DIR="@SRC_DIR@"
 [ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo: sudo relay-update" >&2; exit 1; }
+
+IF_CHANGED=0
+ARGS=()
+for a in "$@"; do
+    if [ "$a" = "--if-changed" ]; then IF_CHANGED=1; else ARGS+=("$a"); fi
+done
+
+# одновременно — только одно обновление (ручное или по таймеру)
+exec 9>/run/relay-update.lock
+if ! flock -n 9; then
+    echo "Обновление уже выполняется, пропуск"
+    exit 0
+fi
+
 cd "$SRC_DIR"
 git() { command git -c safe.directory="$SRC_DIR" "$@"; }   # клон мог быть сделан другим пользователем
+export GIT_TERMINAL_PROMPT=0                                # без запроса пароля: только сохранённый токен
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$IF_CHANGED" -eq 1 ]; then
+    if ! git fetch --quiet origin "$branch"; then
+        echo "Не удалось связаться с репозиторием (сеть или токен GitHub): $(git remote get-url origin)" >&2
+        exit 1
+    fi
+    if [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$branch")" ]; then
+        exit 0   # изменений нет — тихо выходим
+    fi
+fi
+
 echo "→ Обновление из $(git remote get-url origin 2>/dev/null || echo "$SRC_DIR")"
 before=$(git rev-parse --short HEAD)
-git pull --ff-only
+git pull --ff-only origin "$branch"
 after=$(git rev-parse --short HEAD)
 if [ "$before" = "$after" ]; then
     echo "  Новых изменений нет ($after), установка будет выполнена повторно."
 else
     echo "  $before → $after:"; git log --oneline "$before..$after" | sed 's/^/    /'
 fi
-exec bash "$SRC_DIR/install.sh" "$@"
+exec bash "$SRC_DIR/install.sh" "${ARGS[@]+"${ARGS[@]}"}"

@@ -54,6 +54,16 @@ sudo relay-update
 Команда выполняет `git pull` и запускает установку повторно. Пароли, пользователи, платы и журналы сохраняются,
 а схема БД обновляется автоматически.
 
+**Автообновление.** Таймер `relay-update.timer` раз в 10 минут проверяет репозиторий. Если там есть новые коммиты,
+он выполняет обновление сам, ничего запускать не нужно. Таймер ставится при установке из git-клона. Нужен сохранённый
+токен GitHub в `/root/.git-credentials`; для публичного репозитория токен не нужен.
+
+```bash
+systemctl status relay-update.timer               # когда следующая проверка
+journalctl -u relay-update -n 50                  # журнал автообновлений
+sudo systemctl disable --now relay-update.timer   # выключить (или установка с --no-auto-update)
+```
+
 ## Работа с платами
 
 Адрес сервера задаётся в **меню настройки платы** (прошивка v2.3+): подключите плату по USB, откройте монитор порта
@@ -219,9 +229,9 @@ sudo mysql u2702672_service_reley_v1 < old.sql && sudo bash /opt/relay-server/in
 install.sh            установка и обновление (идемпотентно)
 bootstrap.sh          установка одной командой через curl
 bin/relay-device      управление платами и пользователями
-bin/relay-update      git pull + install.sh
+bin/relay-update      git pull + install.sh (--if-changed — для таймера автообновления)
 sql/schema.sql        схема и миграции БД
-systemd/              служба MQTT-подписчика
+systemd/              службы: MQTT-подписчик, очередь действий, автообновление (relay-update.timer)
 web/                  веб-панель и подписчик (PHP 8.1+, библиотека php-mqtt в web/vendor)
 firmware/             прошивка платы
 docs/                 протокол (PROTOCOL.md) и исходные инструкции

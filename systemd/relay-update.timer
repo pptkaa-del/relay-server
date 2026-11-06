@@ -1,0 +1,11 @@
+[Unit]
+Description=Relay server: check git repository for updates every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target
