@@ -182,18 +182,15 @@
   $('#relays').addEventListener('click', e => {
     const b = e.target.closest('[data-c]'); if (!b) return;
     const c = +b.dataset.c, r = +b.dataset.r;
-    if (c === 3 && !confirm(`Перезапустить «${dev.relays[r - 1].name}»? Реле выключится и через 1 с включится.`)) return;
     send(c, r);
   });
   $$('[data-all]').forEach(b => b.addEventListener('click', () => {
     const c = +b.dataset.all;
-    if (!confirm(`${cmdLabel(c, 0)} на плате «${dev.name}»?`)) return;
     send(c, 0);
   }));
   $('#b-status').addEventListener('click', () => send(4, 0));
   $$('[data-lock]').forEach(b => b.addEventListener('click', () => {
     const c = +b.dataset.lock;
-    if (c === 3 && !confirm(`Открыть замок на плате «${dev ? dev.name : id}»?`)) return;
     send(c, 5);
   }));
   $('#b-reboot').addEventListener('click', () => {

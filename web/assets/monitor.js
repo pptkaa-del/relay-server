@@ -187,7 +187,6 @@
     const device = +$('#c-device').value, relay = +$('#c-relay').value, command = +btn.dataset.cmd;
     if (!device) return result('err', 'Укажите ID платы');
     const b = cur();
-    if (command === 3 && !confirm(`Перезапустить ${relay ? 'реле ' + relay : 'все реле'} на плате #${device}?`)) return;
     if (command === 5 && !confirm(`Перезагрузить плату #${device}${b.is_local ? '' : ' через брокер «' + b.name + '»'}?\nПлата будет недоступна 1–2 минуты.`)) return;
     const label = `#${device} ${cmdLabel(command, relay)}`;
     btn.disabled = true; result('wait', `${label}: отправка…`);
