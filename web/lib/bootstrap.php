@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.3';
+const RELAY_VERSION       = '3.4';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -31,6 +31,16 @@ const RELAY_COMMANDS = [
     4 => 'запрос статуса',
     5 => 'перезагрузка платы',
 ];
+
+/**
+ * Адрес файла из /assets с меткой версии по времени его изменения: после обновления сервера
+ * браузер сразу загружает новые скрипты и стили, а не берёт старые из кэша.
+ */
+function asset_url(string $file): string
+{
+    $mtime = @filemtime(__DIR__ . '/../assets/' . $file);
+    return '/assets/' . $file . '?v=' . RELAY_VERSION . '-' . ($mtime ?: 0);
+}
 
 function relay_config(): array
 {

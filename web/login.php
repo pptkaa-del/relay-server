@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Вход · Relay Control</title>
-<link rel="stylesheet" href="/assets/app.css?v=<?= RELAY_VERSION ?>">
+<link rel="stylesheet" href="<?= h(asset_url('app.css')) ?>">
 </head>
 <body>
 <div class="auth">

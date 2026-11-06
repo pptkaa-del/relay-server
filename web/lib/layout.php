@@ -9,7 +9,6 @@ function layout_head(string $title, string $active, string $login): void
         'labels'  => ['/labels.php', 'Наклейки', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>'],
     ];
     relay_config(); // часовой пояс сервера для date('Z')
-    $v = RELAY_VERSION;
     ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -20,7 +19,7 @@ function layout_head(string $title, string $active, string $login): void
 <meta name="server-tz-offset" content="<?= (int)(date('Z') / 60) ?>">
 <title><?= h($title) ?> · Relay Control</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%232563eb'/><path d='M7 12h3l2-4 2 8 2-4h1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
-<link rel="stylesheet" href="/assets/app.css?v=<?= $v ?>">
+<link rel="stylesheet" href="<?= h(asset_url('app.css')) ?>">
 </head>
 <body>
 <header class="topbar">
@@ -52,13 +51,12 @@ function layout_head(string $title, string $active, string $login): void
 
 function layout_foot(array $scripts = []): void
 {
-    $v = RELAY_VERSION;
     ?>
 </main>
 <div id="toasts" class="toasts" aria-live="polite"></div>
-<script src="/assets/app.js?v=<?= $v ?>"></script>
+<script src="<?= h(asset_url('app.js')) ?>"></script>
 <?php foreach ($scripts as $s): ?>
-<script src="/assets/<?= h($s) ?>?v=<?= $v ?>"></script>
+<script src="<?= h(asset_url($s)) ?>"></script>
 <?php endforeach; ?>
 </body>
 </html>
