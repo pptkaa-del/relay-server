@@ -7,8 +7,4 @@ if (($_GET['aut'] ?? '') === 'finish') {
     header('Location: /login.php');
     exit;
 }
-$login = getUserLogin();
-if ($login === null) {
-    header('Location: /login.php?next=' . urlencode($_SERVER['REQUEST_URI'] ?? '/'));
-    exit;
-}
+$login = relay_require_auth();

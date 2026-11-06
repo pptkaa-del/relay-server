@@ -119,9 +119,9 @@
         <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
         <div class="side-item-meta">${d.ts ? 'данные ' + ago(d.ts) : 'данных не было'}${d.signal != null ? ' · сигнал ' + d.signal : ''}${d.alarm === 1 ? ' · <span style="color:var(--warn)">АКБ</span>' : ''}</div>
         <div class="mini-relays">${d.relays.map((s, i) => `<span class="${s === 1 ? 'on' : s === 2 ? 'er' : ''}">${i + 1}</span>`).join('')}</div>
-        ${!b.is_local && d.registered === false ? `<a class="btn sm" style="margin-top:8px" href="/index.php?add=${d.id}" title="Зарегистрировать плату на этом сервере">+ Добавить в систему</a>` : ''}
+        ${!b.is_local && d.registered === false ? `<a class="btn sm" style="margin-top:8px" href="/index.php?add=${d.id}" title="Зарегистрировать устройство на этом сервере">+ Добавить в систему</a>` : ''}
       </div>`).join('')
-      : `<div class="empty">${b.is_local ? 'Плат пока нет' : 'Плат не видно. Платы появляются здесь, как только пришлют stat в этот брокер.'}</div>`;
+      : `<div class="empty">${b.is_local ? 'Устройств пока нет' : 'Устройств не видно. Устройства появляются здесь, как только пришлют stat в этот брокер.'}</div>`;
   }
   $('#devices').addEventListener('click', e => {
     if (e.target.closest('a')) return; // ссылка «Добавить в систему»
@@ -185,16 +185,16 @@
   const result = (cls, text) => { const r = $('#result'); r.className = 'result ' + cls; r.textContent = text; };
   $$('[data-cmd]').forEach(btn => btn.addEventListener('click', async () => {
     const device = +$('#c-device').value, relay = +$('#c-relay').value, command = +btn.dataset.cmd;
-    if (!device) return result('err', 'Укажите ID платы');
+    if (!device) return result('err', 'Укажите ID устройства');
     const b = cur();
-    if (command === 5 && !confirm(`Перезагрузить плату #${device}${b.is_local ? '' : ' через брокер «' + b.name + '»'}?\nПлата будет недоступна 1–2 минуты.`)) return;
+    if (command === 5 && !confirm(`Перезагрузить устройство #${device}${b.is_local ? '' : ' через брокер «' + b.name + '»'}?\nУстройство будет недоступно 1–2 минуты.`)) return;
     const label = `#${device} ${cmdLabel(command, relay)}`;
     btn.disabled = true; result('wait', `${label}: отправка…`);
     try {
       await sendCommand({ url: '/api/monitor.php', params: { action: 'command', broker, device, command, relay }, statusUrl: '/api/monitor.php',
         statusParams: { action: 'command_status', broker }, label,
-        onDone: st => result(st === 'success' ? 'ok' : 'err', `${label}: ${st === 'success' ? 'плата подтвердила выполнение' : st === 'error' ? 'плата сообщила об ошибке' : 'подтверждение не получено за 60 с'}`) });
-      result('wait', `${label}: отправлено, ждём ответ платы…`);
+        onDone: st => result(st === 'success' ? 'ok' : 'err', `${label}: ${st === 'success' ? 'устройство подтвердило выполнение' : st === 'error' ? 'устройство сообщило об ошибке' : 'подтверждение не получено за 60 с'}`) });
+      result('wait', `${label}: отправлено, ждём ответ устройства…`);
       loadMessages();
     } catch (e) { result('err', `${label}: ${e.message}`); }
     finally { btn.disabled = false; }

@@ -214,3 +214,18 @@ UPDATE `general_info`
    AND `cal_adc_19` IS NOT NULL AND `cal_adc_26` IS NOT NULL AND `cal_adc_19` <> `cal_adc_26`;
 UPDATE `general_info` SET `cal_adc_6` = NULL WHERE `cal_adc_15` IS NULL;
 UPDATE `general_info` SET `cal_adc_15` = NULL WHERE `cal_adc_6` IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- v3.6: пользователи панели, добавленные через веб-интерфейс
+-- (пользователи из /etc/relay-server/users.php — администраторы, хранятся в файле)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `panel_users` (
+    `login` VARCHAR(64) NOT NULL PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL DEFAULT '',
+    `role` ENUM('admin', 'operator', 'viewer') NOT NULL DEFAULT 'operator',
+    `pass_hash` VARCHAR(255) NOT NULL,
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_by` VARCHAR(64) DEFAULT NULL,
+    `last_login_at` DATETIME DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

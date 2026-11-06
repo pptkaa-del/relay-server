@@ -3,6 +3,8 @@
 (() => {
   const { $, $$, esc, api, ago, fmtTime, stateBadge, signalBars, ICONS, toast, sendCommand, cmdLabel } = App;
   let devices = [], filter = 'all', sort = 'id', query = '';
+  const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100;
+    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
   const busy = new Set(); // "id:relay" — ждём подтверждения
 
   try { sort = localStorage.getItem('relay-sort') || 'id'; } catch (e) {}
@@ -23,54 +25,127 @@
     return list;
   }
 
-  function relayHtml(d, r) {
-    const key = d.id + ':' + r.num;
-    const st = r.state;
-    const cls = st === 1 ? 'on' : st === 2 ? 'err' : '';
-    const label = st == null ? 'нет данных' : App.RSTATE[st];
-    const disabled = !d.registered || d.state === 'never';
-    return `<div class="relay">
-      <span class="relay-name" title="${esc(r.name)}">${esc(r.name)}</span>
-      <button class="switch ${cls} ${busy.has(key) ? 'busy' : ''}" data-id="${d.id}" data-relay="${r.num}" data-state="${st ?? ''}"
-        ${disabled ? 'disabled' : ''} aria-label="${esc(r.name)}: ${label}" title="${d.online ? 'Нажмите, чтобы ' + (st === 1 ? 'выключить' : 'включить') : 'Плата не на связи — команда выполнится при подключении'}"></button>
-      <span class="relay-state">${label}</span></div>`;
+  /* ---------- Выбор платы: /index.php#9 — плата 9, без номера — сводка всех реле ---------- */
+  const selFromHash = () => { const m = /^#(\d{1,10})$/.exec(location.hash); return m ? +m[1] : 0; };
+  let selected = selFromHash();
+  function select(id) {
+    selected = id;
+    history.replaceState(null, '', id ? '#' + id : location.pathname + location.search);
+    render();
+    if (id && matchMedia('(max-width: 1100px)').matches) $('#panel').scrollIntoView({ block: 'start' });
+  }
+  window.addEventListener('hashchange', () => { selected = selFromHash(); render(); });
+
+  const relayBadge = st => st == null ? '<span class="badge">нет данных</span>'
+    : `<span class="badge ${st === 1 ? 'success' : st === 2 ? 'warning' : ''}">${App.RSTATE[st]}</span>`;
+  const canSend = d => d.registered && d.state !== 'never';
+  const metaHtml = d => {
+    const seen = d.last_data_ts;
+    return `<span class="item mono">#${d.id}</span>
+      <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
+      <span class="item">${signalBars(d.signal_level)}</span>
+      ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
+      ${d.alarm === 1 && d.online ? `<span class="badge alarm">${ICONS.battery}питание от АКБ</span>` : ''}
+      ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}`;
+  };
+
+  // список плат слева
+  function sideHtml(d) {
+    const on = d.relays.filter(r => r.state === 1).length;
+    const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}" title="${esc(r.name)}: ${r.state == null ? 'нет данных' : App.RSTATE[r.state]}"></i>`).join('');
+    return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
+      <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
+      <div class="side-item-meta side-dev-meta"><span class="pips">${pips}</span><span>вкл ${on}/${d.relays.length}</span>
+        <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
 
-  function cardHtml(d) {
-    const seen = d.last_data_ts;
-    return `<article class="dev state-${d.state}">
-      <div class="dev-head">
-        <div class="dev-title"><a href="/device.php?id=${d.id}">${esc(d.name)}</a><div class="dev-addr">${esc(d.address || 'адрес не указан')}</div></div>
-        <div>${stateBadge(d.state)}</div>
-      </div>
-      <div class="dev-meta">
-        <span class="item mono">#${d.id}</span>
-        <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) + ' (' + esc(d.last_data_topic || '') + ')' : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
-        <span class="item">${signalBars(d.signal_level)}</span>
-        ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
-        ${d.alarm === 1 && d.online ? `<span class="badge alarm">${ICONS.battery}АКБ</span>` : ''}
-        ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}
-      </div>
-      <div class="relays">${d.relays.map(r => relayHtml(d, r)).join('')}</div>
-      <div class="dev-foot">
-        <a class="btn sm ghost" href="/device.php?id=${d.id}">Подробнее</a>
+  // без выбора: все реле всех плат
+  function overviewHtml(list) {
+    const relays = list.reduce((n, d) => n + d.relays.length, 0);
+    const on = list.reduce((n, d) => n + d.relays.filter(r => r.state === 1).length, 0);
+    const rows = list.map(d => {
+      const dis = !canSend(d);
+      return `<tr class="ov-grp"><td colspan="4"><div class="ov-head">
+          <button class="ov-dev" data-sel="${d.id}" title="Открыть устройство"><span class="dot ${d.state}"></span><b>${esc(d.name)}</b></button>
+          ${stateBadge(d.state)}<span class="dev-meta ov-meta">${metaHtml(d)}</span></div></td></tr>`
+        + d.relays.map(r => {
+          const key = d.id + ':' + r.num, cls = r.state === 1 ? 'on' : r.state === 2 ? 'err' : '';
+          return `<tr class="ov-relay"><td><span class="ov-rname" title="${esc(r.name)}">${esc(r.name)}</span> <span class="muted ov-rnum">реле ${r.num}</span></td>
+            <td>${relayBadge(r.state)}</td>
+            <td class="ov-ts muted">${r.ts ? fmtTime(r.ts) : '—'}</td>
+            <td class="ov-sw"><button class="switch ${cls} ${busy.has(key) ? 'busy' : ''}" data-id="${d.id}" data-relay="${r.num}" data-state="${r.state ?? ''}" ${dis ? 'disabled' : ''}
+              aria-label="${esc(r.name)}" title="${dis ? 'Устройство ещё не выходило на связь' : d.online ? (r.state === 1 ? 'Выключить' : 'Включить') : 'Устройство не на связи — команда выполнится при подключении'}"></button></td></tr>`;
+        }).join('');
+    }).join('');
+    return `<section class="card">
+      <div class="card-head"><h2>Все реле</h2><span class="muted">${list.length} ${plural(list.length, 'устройство', 'устройства', 'устройств')} · ${relays} реле · включено ${on}</span></div>
+      <div class="table-wrap"><table class="tbl ov">
+        <thead><tr><th>Реле</th><th>Состояние</th><th class="ov-ts">Изменено</th><th class="ov-sw">Вкл / выкл</th></tr></thead>
+        <tbody>${rows}</tbody></table></div></section>`;
+  }
+
+  // выбрана плата: её реле и краткие сведения
+  function panelHtml(d) {
+    const dis = !canSend(d) ? 'disabled' : '';
+    const relays = d.relays.map(r => {
+      const b = n => busy.has(d.id + ':' + r.num) || dis ? 'disabled' : '';
+      return `<div class="relay-card">
+        <div class="relay-card-top"><span class="relay-card-name" title="${esc(r.name)}">${esc(r.name)}</span>${relayBadge(r.state)}</div>
+        <div class="muted" style="font-size:12px">Реле ${r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
+        <div class="btn-row">
+          <button class="btn sm ok" data-c="1" data-r="${r.num}" ${b(1)}>Вкл</button>
+          <button class="btn sm bad" data-c="2" data-r="${r.num}" ${b(2)}>Выкл</button>
+          <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button>
+        </div></div>`;
+    }).join('');
+    const lock = d.door_state != null ? `<div class="lock-row">
+        <span>Дверь: ${d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</span>
+        <span>Замок: ${d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : '<span class="badge">обесточен</span>'}</span>
         <span class="spacer"></span>
-        <button class="btn sm ghost" data-cmd="4" data-id="${d.id}" title="Запросить состояние" ${d.registered ? '' : 'disabled'}>${ICONS.refresh}</button>
-        <button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" title="Перезагрузить плату" ${d.registered ? '' : 'disabled'}>${ICONS.power}</button>
+        <button class="btn sm primary" data-c="3" data-r="5" ${dis}>Открыть замок</button>
+        <button class="btn sm" data-c="1" data-r="5" ${dis}>Подать питание</button>
+        <button class="btn sm" data-c="2" data-r="5" ${dis}>Снять питание</button></div>` : '';
+    const note = d.state === 'never' ? 'Устройство ещё не выходило на связь.' : !d.online ? 'Устройство не на связи: команды выполнятся при подключении.' : '';
+    return `<section class="card dev-panel state-${d.state}">
+      <div class="card-head">
+        <button class="btn sm ghost only-narrow" data-sel="0">← Все устройства</button>
+        <div class="dev-panel-title"><h2><a href="/device.php?id=${d.id}">${esc(d.name)}</a></h2><div class="muted">${esc(d.address || 'адрес не указан')}</div></div>
+        ${stateBadge(d.state)}
       </div>
-    </article>`;
+      <div class="card-body">
+        <div class="dev-meta dev-panel-meta">${metaHtml(d)}</div>
+        <div class="relay-cards">${relays}</div>
+        ${lock}
+        ${note ? `<p class="muted" style="margin:12px 0 0;font-size:13px">${note}</p>` : ''}
+      </div>
+      <div class="dev-foot">
+        <a class="btn sm" href="/device.php?id=${d.id}">Подробнее: журнал, АКБ, настройки</a>
+        <span class="spacer"></span>
+        <button class="btn sm ghost" data-cmd="4" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.refresh}<span class="hide-narrow">Запросить статус</span></button>
+        <button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>
+      </div></section>`;
   }
 
   function render() {
     const list = visible();
-    const grid = $('#grid');
+    const sel = selected ? devices.find(d => d.id === selected) : null;
+    $('#split').classList.toggle('has-sel', !!sel);
+    $('.side-all').classList.toggle('sel', !sel);
+    $('#side-count').textContent = devices.length;
+    $('#side').innerHTML = list.length ? list.map(sideHtml).join('')
+      : `<div class="side-empty muted">${devices.length ? 'Нет устройств по фильтру' : 'Устройств пока нет'}</div>`;
+    const panel = $('#panel');
     if (!devices.length) {
-      grid.innerHTML = `<div class="card empty" style="grid-column:1/-1">${ICONS.server}<div><b>Плат пока нет</b></div>
-        <p>Нажмите «Добавить плату» и укажите ID из меню настройки платы.<br>После подключения она появится здесь «на связи».</p>
-        <button class="btn primary" data-open-add>Добавить плату</button></div>`;
-      return;
+      panel.innerHTML = `<div class="card empty">${ICONS.server}<div><b>Устройств пока нет</b></div>
+        <p>Нажмите «Добавить устройство» и укажите ID из меню настройки устройства.<br>После подключения оно появится здесь «на связи».</p>
+        <button class="btn primary" data-open-add>Добавить устройство</button></div>`;
+    } else if (selected && !sel) {
+      panel.innerHTML = `<div class="card empty"><div><b>Устройство #${selected} не найдено</b></div><p><button class="btn" data-sel="0">Показать все устройства</button></p></div>`;
+    } else if (sel) {
+      panel.innerHTML = panelHtml(sel);
+    } else {
+      panel.innerHTML = list.length ? overviewHtml(list) : '<div class="card empty">Нет устройств по выбранному фильтру</div>';
     }
-    grid.innerHTML = list.length ? list.map(cardHtml).join('') : '<div class="card empty" style="grid-column:1/-1">Нет плат по выбранному фильтру</div>';
   }
 
   async function load() {
@@ -78,8 +153,8 @@
     devices = j.devices;
     for (const [k, v] of Object.entries(j.summary)) { const el = $(`[data-k="${k}"]`); if (el) el.textContent = v; }
     $('#lastmsg').innerHTML = j.last_message_ts
-      ? `Последнее сообщение от плат: <b data-ago="${j.last_message_ts}">${ago(j.last_message_ts)}</b> · ${fmtTime(j.last_message_ts)}`
-      : 'Сообщений от плат ещё не было';
+      ? `Последнее сообщение от устройств: <b data-ago="${j.last_message_ts}">${ago(j.last_message_ts)}</b> · ${fmtTime(j.last_message_ts)}`
+      : 'Сообщений от устройств ещё не было';
     render();
   }
 
@@ -98,30 +173,31 @@
     render();
   });
 
-  $('#grid').addEventListener('click', async e => {
+  async function command(id, command, relay, btn) {
+    const d = devices.find(x => x.id === id); if (!d) return;
+    if (command === 5 && !confirm(`Перезагрузить устройство «${d.name}» (#${id})?\nУстройство будет недоступно 1–2 минуты.`)) return;
+    const key = id + ':' + relay;
+    if (relay) { busy.add(key); render(); } else if (btn) btn.disabled = true;
+    const done = () => { busy.delete(key); load().catch(() => {}); };
+    try {
+      await sendCommand({ url: '/api/devices.php', params: { action: 'command', id, command, relay }, statusUrl: '/api/devices.php',
+        statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, relay)}`, onDone: done });
+    } catch (er) { busy.delete(key); render(); toast(er.message, 'err'); }
+    finally { if (!relay && btn) btn.disabled = false; }
+  }
+
+  $('#split').addEventListener('click', e => {
+    const s = e.target.closest('[data-sel]');
+    if (s) { e.preventDefault(); return select(+s.dataset.sel); }
     const sw = e.target.closest('.switch');
-    const cb = e.target.closest('[data-cmd]');
-    if (sw && !sw.disabled && !sw.classList.contains('busy')) {
-      const id = +sw.dataset.id, relay = +sw.dataset.relay, command = sw.dataset.state === '1' ? 2 : 1;
-      const d = devices.find(x => x.id === id);
-      const label = `${d.name}: ${cmdLabel(command, relay)}`;
-      const key = id + ':' + relay;
-      busy.add(key); sw.classList.add('busy');
-      try {
-        await sendCommand({ url: '/api/devices.php', params: { action: 'command', id, command, relay }, statusUrl: '/api/devices.php',
-          statusParams: { action: 'command_status' }, label, onDone: () => { busy.delete(key); load().catch(() => {}); } });
-      } catch (er) { busy.delete(key); sw.classList.remove('busy'); toast(er.message, 'err'); }
-    } else if (cb) {
-      const id = +cb.dataset.id, command = +cb.dataset.cmd;
-      const d = devices.find(x => x.id === id);
-      if (command === 5 && !confirm(`Перезагрузить плату «${d.name}» (#${id})?\nПлата будет недоступна 1–2 минуты.`)) return;
-      cb.disabled = true;
-      try {
-        await sendCommand({ url: '/api/devices.php', params: { action: 'command', id, command, relay: 0 }, statusUrl: '/api/devices.php',
-          statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, 0)}`, onDone: () => load().catch(() => {}) });
-      } catch (er) { toast(er.message, 'err'); }
-      finally { cb.disabled = false; }
+    if (sw) {
+      if (sw.disabled || sw.classList.contains('busy')) return;
+      return command(+sw.dataset.id, sw.dataset.state === '1' ? 2 : 1, +sw.dataset.relay);
     }
+    const rb = e.target.closest('[data-c][data-r]');
+    if (rb && selected) return command(selected, +rb.dataset.c, +rb.dataset.r);
+    const cb = e.target.closest('[data-cmd]');
+    if (cb) return command(+cb.dataset.id, +cb.dataset.cmd, 0, cb);
   });
 
   /* ---------- Добавление платы ---------- */
@@ -132,7 +208,7 @@
     addDlg.showModal(); (prefillId ? F('name') : F('id')).focus();
   }
   $('#b-add').addEventListener('click', () => openAdd());
-  $('#grid').addEventListener('click', e => { if (e.target.closest('[data-open-add]')) openAdd(); });
+  $('#panel').addEventListener('click', e => { if (e.target.closest('[data-open-add]')) openAdd(); });
   // /index.php?add=12 — открыть форму сразу (ссылка из монитора)
   const addParam = new URLSearchParams(location.search).get('add');
   if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
@@ -142,7 +218,7 @@
     const list = (await api('/api/devices.php', { action: 'pending' })).pending;
     $('#pending').classList.toggle('hidden', !list.length);
     $('#pending-list').innerHTML = list.map(p => `<div class="pending-row">
-      <div><b>Плата #${p.id}</b> <span class="mono muted">${esc(p.client_id)}</span>
+      <div><b>Устройство #${p.id}</b> <span class="mono muted">${esc(p.client_id)}</span>
         <div class="muted" style="font-size:12.5px">попыток подключения: ${p.attempts} · последняя ${ago(p.last_ts)}${p.ip ? ' · IP ' + esc(p.ip) : ''}</div></div>
       <div class="btn-row"><button class="btn sm primary" data-padd="${p.id}">Добавить</button>
         <button class="btn sm ghost" data-pign="${p.id}" title="Скрыть из списка">Скрыть</button></div></div>`).join('');
@@ -160,23 +236,23 @@
     const p = { action: 'add' };
     for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_6', 'cal_adc_15']) p[k] = F(k).value.trim();
     const btn = $('#add-submit'), res = $('#add-result');
-    btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую плату в брокере…';
+    btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую устройство в брокере…';
     try {
       const j = await api('/api/devices.php', p, true);
       addDlg.close();
-      $('#added-info').innerHTML = `<dt>ID платы</dt><dd class="mono">${j.id}</dd>
+      $('#added-info').innerHTML = `<dt>ID устройства</dt><dd class="mono">${j.id}</dd>
         <dt>MQTT логин</dt><dd class="mono">${esc(j.mqtt.username)}</dd>
         <dt>MQTT пароль</dt><dd class="mono" style="word-break:break-all">${esc(j.mqtt.password)}</dd>
         <dt>Топик команд</dt><dd class="mono">${esc(j.mqtt.topic)}</dd>`;
       $('#added-open').href = '/device.php?id=' + j.id;
       $('#added').showModal();
-      toast(`Плата #${j.id} добавлена`, 'ok');
+      toast(`Устройство #${j.id} добавлено`, 'ok');
       load().catch(() => {}); loadPending().catch(() => {});
     } catch (er) { res.className = 'result err'; res.textContent = er.message; }
     finally { btn.disabled = false; }
   });
   $('#added').addEventListener('click', e => { if (e.target.closest('[data-close]')) $('#added').close(); });
 
-  load().catch(e => { $('#grid').innerHTML = `<div class="card empty" style="grid-column:1/-1">${esc(e.message)}</div>`; });
+  load().catch(e => { $('#panel').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; });
   App.every(5000, load);
 })();

@@ -109,7 +109,7 @@ function handleStat(array $d, bool $retained): void
             relay_q($c, 'UPDATE devices SET lock_state = ?, door_state = ? WHERE id = ?', [(int)$d['lock'], (int)$d['door'], $id]);
         }
         relay_q($c, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
-        relay_event($c, $id, 'created', 'Плата впервые вышла на связь', 'success', $d);
+        relay_event($c, $id, 'created', 'Устройство впервые вышло на связь', 'success', $d);
         writeLog("STAT: создано новое устройство $id");
         return;
     }
@@ -188,11 +188,11 @@ function handleStat(array $d, bool $retained): void
     $newConn = $stat === 0 ? 'offline' : 'online';
     if ($current['conn_state'] !== $newConn) {
         $newConn === 'online'
-            ? relay_event($c, $id, 'online', 'Плата на связи (сигнал ' . $sl . ')', 'success')
-            : relay_event($c, $id, 'offline', 'Плата сообщила о переходе в оффлайн (stat = 0)', 'warning');
+            ? relay_event($c, $id, 'online', 'Устройство на связи (сигнал ' . $sl . ')', 'success')
+            : relay_event($c, $id, 'offline', 'Устройство сообщило о переходе в оффлайн (stat = 0)', 'warning');
     }
     if ($stat === 2 && (int)$current['status'] !== 2) {
-        relay_event($c, $id, 'info', 'Плата сообщила об ошибке (stat = 2)', 'error');
+        relay_event($c, $id, 'info', 'Устройство сообщило об ошибке (stat = 2)', 'error');
     }
 
     relay_q($c, 'UPDATE devices SET last_seen = ?, status = ?, version = ?, signal_level = ?, battery_power = ?, conn_state = ? WHERE id = ?',
@@ -220,7 +220,7 @@ function handleRep(array $d): void
     if ($cmd) {
         $label = relay_command_label((int)$cmd['command'], (int)$cmd['relay_num']);
         if ((int)$cmd['command'] === 5) {
-            relay_event($c, $id, 'reboot', $ok ? 'Плата приняла команду перезагрузки и перезапускается' : 'Плата отклонила перезагрузку', $ok ? 'warning' : 'error', ['cmd_id' => $cmdId]);
+            relay_event($c, $id, 'reboot', $ok ? 'Устройство приняло команду перезагрузки и перезапускается' : 'Устройство отклонило перезагрузку', $ok ? 'warning' : 'error', ['cmd_id' => $cmdId]);
         } elseif ((int)$cmd['command'] !== 4) {
             relay_event($c, $id, 'reply', ($ok ? 'Выполнено: ' : 'Не выполнено: ') . $label, $ok ? 'success' : 'error', ['cmd_id' => $cmdId]);
         }
@@ -246,7 +246,7 @@ function checkTimeouts(): void
     foreach ($rows as $row) {
         $id = (int)$row['id'];
         relay_q($c, "UPDATE devices SET conn_state = 'offline' WHERE id = ?", [$id]);
-        relay_event($c, $id, 'offline', 'Нет связи: данных от платы нет с ' . date('d.m H:i:s', strtotime($row['last_seen'])), 'warning');
+        relay_event($c, $id, 'offline', 'Нет связи: данных от устройства нет с ' . date('d.m H:i:s', strtotime($row['last_seen'])), 'warning');
         writeLog("TIMEOUT: устройство $id — нет данных более " . RELAY_OFFLINE_AFTER . ' с', 'WARN');
     }
 }
@@ -291,7 +291,7 @@ function handleBrokerLog(string $line): void
         static $warned = [];
         if (!isset($warned[$id]) || time() - $warned[$id] > 3600) {
             $warned[$id] = time();
-            relay_event($c, $id, 'info', 'Брокер не пускает плату (not authorised). Проверьте ID в плате или выполните: sudo relay-device add ' . $id, 'error');
+            relay_event($c, $id, 'info', 'Брокер не пускает устройство (not authorised). Проверьте ID в устройстве или выполните: sudo relay-device add ' . $id, 'error');
         }
     }
     relay_q($c, 'INSERT INTO pending_devices (id, client_id, ip, attempts, first_seen, last_seen) VALUES (?, ?, ?, 1, NOW(), NOW())

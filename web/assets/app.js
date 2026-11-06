@@ -46,6 +46,26 @@ const App = (() => {
     return j;
   }
 
+  /* ---------- Смена своего пароля (меню пользователя) ---------- */
+  const pwDlg = $('#pw-dlg'), pwForm = $('#pw-form');
+  if (pwDlg) {
+    $('#pw-open').addEventListener('click', () => {
+      pwForm.reset(); $('#pw-result').className = 'result'; $('#pw-result').textContent = '';
+      $$('details.menu[open]').forEach(d => { d.open = false; });
+      pwDlg.showModal();
+    });
+    pwForm.addEventListener('submit', async e => {
+      if (e.submitter && e.submitter.value === 'cancel') return;
+      e.preventDefault();
+      const f = pwForm.elements, res = $('#pw-result');
+      if (f.password.value !== f.password2.value) { res.className = 'result err'; res.textContent = 'Новые пароли не совпадают'; return; }
+      try {
+        await api('/api/users.php', { action: 'passwd', old: f.old.value, password: f.password.value }, true);
+        pwDlg.close(); toast('Пароль изменён', 'ok');
+      } catch (er) { res.className = 'result err'; res.textContent = er.message; }
+    });
+  }
+
   /* ---------- Форматирование ---------- */
   const pad = n => String(n).padStart(2, '0');
   // Время показываем в часовом поясе сервера (как в журналах), а не браузера
@@ -77,7 +97,7 @@ const App = (() => {
   function parseTs(s) { if (!s) return null; const d = new Date(s.replace(' ', 'T')); return isNaN(d) ? null : d.getTime() / 1000; }
 
   const STATE = {
-    online: ['online', 'На связи'], offline: ['offline', 'Нет связи'], error: ['error', 'Ошибка платы'],
+    online: ['online', 'На связи'], offline: ['offline', 'Нет связи'], error: ['error', 'Ошибка устройства'],
     alarm: ['alarm', 'Питание от АКБ'], never: ['never', 'Не выходила на связь'],
   };
   const stateBadge = st => { const [c, t] = STATE[st] || STATE.never; return `<span class="badge ${c}"><span class="dot ${c}"></span>${t}</span>`; };
@@ -139,16 +159,16 @@ const App = (() => {
     if (!d) return '<span class="tag">двоичные данные</span>';
     if (d.type === 'stat') {
       const rel = [d.r1, d.r2, d.r3, d.r4].map((v, i) => `${i + 1}:${RSTATE[v] ?? v}`).join(' ');
-      return `<b>stat</b> · плата #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}${d.door != null ? ' · дверь ' + (d.door ? '<span class="badge warn">открыта</span>' : 'закрыта') + ' · замок ' + (d.lock ? 'вкл' : 'выкл') : ''}`;
+      return `<b>stat</b> · устройство #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}${d.door != null ? ' · дверь ' + (d.door ? '<span class="badge warn">открыта</span>' : 'закрыта') + ' · замок ' + (d.lock ? 'вкл' : 'выкл') : ''}`;
     }
-    if (d.type === 'rep') return `<b>rep</b> · плата #${d.id} · команда ${d.cmd_id} · ${d.success === 1 ? '<span class="badge success">выполнена</span>' : '<span class="badge error">не выполнена</span>'}`;
+    if (d.type === 'rep') return `<b>rep</b> · устройство #${d.id} · команда ${d.cmd_id} · ${d.success === 1 ? '<span class="badge success">выполнена</span>' : '<span class="badge error">не выполнена</span>'}`;
     if (d.type === 'com') return `<b>${esc(d.command_name)}</b>${[1, 2, 3].includes(d.command) ? ' · ' + (d.rel_number === 5 ? 'замок' : d.rel_number ? 'реле ' + d.rel_number : 'все реле') : ''} · cmd_id ${d.cmd_id}`;
     if (d.type === 'json') return `<span class="mono">${esc(JSON.stringify(d.data))}</span>`;
     return esc(d.text);
   }
 
   /* ---------- Команды платам ---------- */
-  const CMD = { 1: 'Включить', 2: 'Выключить', 3: 'Перезапуск реле', 4: 'Запрос статуса', 5: 'Перезагрузка платы' };
+  const CMD = { 1: 'Включить', 2: 'Выключить', 3: 'Перезапуск реле', 4: 'Запрос статуса', 5: 'Перезагрузка устройства' };
   function cmdLabel(command, relay) {
     if (relay === 5) return { 1: 'Замок: подать питание', 2: 'Замок: снять питание', 3: 'Замок: открыть' }[command] || CMD[command];
     return CMD[command] + ([1, 2, 3].includes(command) ? ' · ' + (relay ? 'реле ' + relay : 'все реле') : '');
@@ -159,16 +179,16 @@ const App = (() => {
    */
   async function sendCommand({ url, params, statusUrl, statusParams = {}, label, onDone }) {
     const j = await api(url, params, true);
-    toast(`${label}: отправлено, ждём ответ платы…`);
+    toast(`${label}: отправлено, ждём ответ устройства…`);
     (async () => {
       for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 2000));
         let st;
         try { st = (await api(statusUrl, { ...statusParams, cmd_id: j.cmd_id })).status; } catch (e) { continue; }
         if (st === 'success') { toast(`${label}: выполнено`, 'ok'); onDone && onDone('success'); return; }
-        if (st === 'error') { toast(`${label}: плата сообщила об ошибке`, 'err'); onDone && onDone('error'); return; }
+        if (st === 'error') { toast(`${label}: устройство сообщило об ошибке`, 'err'); onDone && onDone('error'); return; }
       }
-      toast(`${label}: ответа от платы нет 60 с. Команда сохранена в брокере и будет выполнена при подключении.`, 'err');
+      toast(`${label}: ответа от устройства нет 60 с. Команда сохранена в брокере и будет выполнена при подключении.`, 'err');
       onDone && onDone('timeout');
     })();
     return j.cmd_id;

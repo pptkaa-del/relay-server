@@ -138,7 +138,7 @@ switch ($action) {
             relay_json(['error' => 'Брокер не найден'], 404);
         }
         if ((int)$b['is_local'] === 1 && !$en) {
-            relay_json(['error' => 'Собственный брокер отключить нельзя — через него работают платы'], 400);
+            relay_json(['error' => 'Собственный брокер отключить нельзя — через него работают устройства'], 400);
         }
         relay_q($connect, 'UPDATE mqtt_brokers SET enabled = ?, status = ? WHERE id = ?', [$en, $en ? 'connecting' : 'disabled', $id]);
         relay_json(['ok' => true]);

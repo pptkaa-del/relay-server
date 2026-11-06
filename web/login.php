@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="auth">
   <div class="card auth-card">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M5 12h3l2-5 4 10 2-5h3"/></svg></span><span>Relay Control</span></div>
-    <p class="sub">Сервер управления релейными платами</p>
+    <p class="sub">Сервер управления релейными устройствами</p>
     <form method="POST" action="/login.php">
       <?php if ($error): ?><div class="alert"><?= h($error) ?></div><?php endif; ?>
       <input type="hidden" name="next" value="<?= h($next) ?>">

@@ -15,7 +15,7 @@ $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from']
 $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to'] ?? '') ? $_GET['to'] . ' 23:59:59' : null;
 
 if ($id <= 0) {
-    relay_json(['error' => 'Не указана плата'], 400);
+    relay_json(['error' => 'Не указано устройство'], 400);
 }
 
 $where = [];
@@ -46,7 +46,7 @@ switch ($kind) {
         $from && $add('created_at >= ?', $from);
         $to && $add('created_at <= ?', $to);
         $sql = 'SELECT cmd_id AS id, created_at AS ts, command, relay_num, status, sent_at, confirmed_at FROM commands WHERE ' . implode(' AND ', $where) . " ORDER BY cmd_id DESC LIMIT $limit";
-        $cols = ['id' => 'cmd_id', 'ts' => 'Создана', 'command' => 'Команда', 'status' => 'Статус', 'sent_at' => 'Отправлена', 'confirmed_at' => 'Ответ платы'];
+        $cols = ['id' => 'cmd_id', 'ts' => 'Создана', 'command' => 'Команда', 'status' => 'Статус', 'sent_at' => 'Отправлена', 'confirmed_at' => 'Ответ устройства'];
         break;
     default:
         relay_json(['error' => 'Неизвестный журнал'], 400);

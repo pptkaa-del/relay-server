@@ -84,7 +84,7 @@ switch ($action) {
         $id = (int)($_GET['id'] ?? 0);
         $rows = device_rows($connect, $id);
         if (!$rows) {
-            relay_json(['error' => 'Плата не найдена'], 404);
+            relay_json(['error' => 'Устройство не найдено'], 404);
         }
         $d = $rows[0];
         // последнее поступление данных: последнее входящее сообщение платы
@@ -107,7 +107,7 @@ switch ($action) {
     case 'update':
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
-            relay_json(['error' => 'Не указана плата'], 400);
+            relay_json(['error' => 'Не указано устройство'], 400);
         }
         $f = fn($k, $max = 200) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
         $name = $f('name') ?: "Устройство $id";
@@ -146,12 +146,12 @@ switch ($action) {
     case 'add':
         $raw = trim((string)($_POST['id'] ?? ''));
         if (!preg_match('/^[1-9][0-9]{0,9}$/', $raw) || (int)$raw > 4294967295) {
-            relay_json(['error' => 'ID платы — целое число от 1 без ведущих нулей (как в меню настройки платы)'], 400);
+            relay_json(['error' => 'ID устройства — целое число от 1 без ведущих нулей (как в меню настройки устройства)'], 400);
         }
         $id = (int)$raw;
         $exists = relay_q($connect, 'SELECT 1 FROM general_info WHERE id = ? UNION SELECT 1 FROM devices WHERE id = ?', [$id, $id]);
         if ($exists && mysqli_num_rows($exists) > 0) {
-            relay_json(['error' => "Плата #$id уже есть в панели"], 409);
+            relay_json(['error' => "Устройство #$id уже есть в панели"], 409);
         }
         $f = fn($k, $max) => mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST[$k] ?? ''))), 0, $max);
         $name = $f('name', 200) ?: "Устройство $id";
@@ -168,8 +168,8 @@ switch ($action) {
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
         if ($code !== 0) {
-            relay_json(['error' => "Не удалось зарегистрировать плату в брокере: $out"
-                . ($code === 126 ? '. Обновите сервер командой «sudo relay-update»; пока можно добавить плату на сервере: sudo relay-device add ' . $id : ''),
+            relay_json(['error' => "Не удалось зарегистрировать устройство в брокере: $out"
+                . ($code === 126 ? '. Обновите сервер командой «sudo relay-update»; пока можно добавить устройство на сервере: sudo relay-device add ' . $id : ''),
                 'hint' => "sudo relay-device add $id"], 500);
         }
         // 2. подписи реле (relay-device создаёт стандартные «Реле N»)
@@ -181,7 +181,7 @@ switch ($action) {
                                   cal_adc_6 = ?, cal_adc_15 = ? WHERE id = ?',
             [$relays[1], $relays[2], $relays[3], $relays[4], $cal6, $cal15, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
-        relay_event($connect, $id, 'info', 'Плата зарегистрирована в панели', 'info', null, $login);
+        relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
             'username' => "relay-$id", 'password' => relay_device_password($id), 'topic' => "com/$id",
         ]]);
@@ -223,14 +223,14 @@ switch ($action) {
     case 'delete':
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
-            relay_json(['error' => 'Не указана плата'], 400);
+            relay_json(['error' => 'Не указано устройство'], 400);
         }
         [$code, $out] = relay_device_cli(['del', (string)$id]);
         relay_q($connect, 'DELETE FROM devices WHERE id = ?', [$id]);      // каскадом: relay_states, commands, device_last_update
         relay_q($connect, 'DELETE FROM general_info WHERE id = ?', [$id]);
         relay_q($connect, 'DELETE FROM device_events WHERE device_id = ?', [$id]);
         relay_json(['ok' => true, 'note' => $code === 0
-            ? 'Доступ платы к брокеру закрыт.'
+            ? 'Доступ устройства к брокеру закрыт.'
             : "Не удалось закрыть доступ к брокеру автоматически ($out). Выполните на сервере: sudo relay-device del $id"]);
 
     default:

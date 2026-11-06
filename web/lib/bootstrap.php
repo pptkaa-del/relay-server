@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.4';
+const RELAY_VERSION       = '3.5';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -29,7 +29,7 @@ const RELAY_COMMANDS = [
     2 => 'выключить',
     3 => 'перезапуск реле',
     4 => 'запрос статуса',
-    5 => 'перезагрузка платы',
+    5 => 'перезагрузка устройства',
 ];
 
 /**
@@ -120,24 +120,127 @@ function relay_session_start(): void
     session_start();
 }
 
+/** Роли пользователей панели */
+const RELAY_ROLES = [
+    'admin'    => 'Администратор',   // всё, включая управление пользователями
+    'operator' => 'Оператор',        // управление устройствами, без управления пользователями
+    'viewer'   => 'Просмотр',        // только просмотр, команды запрещены
+];
+const RELAY_LOGIN_RE = '/^[A-Za-z0-9_.@-]{1,64}$/';
+const RELAY_MIN_PASS = 6;
+
+/**
+ * Пользователи из /etc/relay-server/users.php (создаются install.sh и «sudo relay-device user-add»)
+ * всегда администраторы, из панели не меняются. Остальные хранятся в таблице panel_users.
+ */
+function relay_file_users(): array
+{
+    static $users = null;
+    if ($users === null) {
+        $file = getenv('RELAY_USERS') ?: RELAY_USERS_FILE;
+        $users = is_readable($file) ? (require $file) : [];
+        if (!is_array($users)) {
+            $users = [];
+        }
+    }
+    return $users;
+}
+
+/** Своё соединение для проверки пользователя (до того, как страница подключится к БД). */
+function relay_auth_db(): ?mysqli
+{
+    static $db = false;
+    if ($db === false) {
+        $db = relay_db_connect();
+    }
+    return $db;
+}
+
+/** Сведения о пользователе или null. pwv — отпечаток пароля: после его смены старые сессии закрываются. */
+function relay_user_info(string $login, bool $withHash = false): ?array
+{
+    $file = relay_file_users();
+    if (isset($file[$login])) {
+        $u = ['login' => $login, 'name' => '', 'role' => 'admin', 'source' => 'file', 'enabled' => true, 'pwv' => ''];
+        if ($withHash) {
+            $u['hash'] = $file[$login];
+        }
+        return $u;
+    }
+    $db = relay_auth_db();
+    if (!$db) {
+        return null;
+    }
+    $st = mysqli_prepare($db, 'SELECT login, name, role, pass_hash, enabled FROM panel_users WHERE login = ?');
+    if (!$st) {
+        return null; // таблицы ещё нет (схема не обновлена)
+    }
+    mysqli_stmt_bind_param($st, 's', $login);
+    $res = mysqli_stmt_execute($st) ? mysqli_stmt_get_result($st) : false;
+    $r = $res ? mysqli_fetch_assoc($res) : null;
+    if (!$r) {
+        return null;
+    }
+    $u = ['login' => $r['login'], 'name' => (string)$r['name'], 'role' => isset(RELAY_ROLES[$r['role']]) ? $r['role'] : 'viewer',
+          'source' => 'db', 'enabled' => (bool)$r['enabled'], 'pwv' => substr(sha1($r['pass_hash']), 0, 16)];
+    if ($withHash) {
+        $u['hash'] = $r['pass_hash'];
+    }
+    return $u;
+}
+
 function relay_check_password(string $login, string $pass): bool
 {
-    $file = getenv('RELAY_USERS') ?: RELAY_USERS_FILE;
-    $users = is_readable($file) ? (require $file) : [];
-    return isset($users[$login]) && password_verify($pass, $users[$login]);
+    $u = relay_user_info($login, true);
+    if (!$u || !$u['enabled'] || !password_verify($pass, $u['hash'])) {
+        return false;
+    }
+    if ($u['source'] === 'db') {
+        @mysqli_query(relay_auth_db(), "UPDATE panel_users SET last_login_at = NOW() WHERE login = '"
+            . mysqli_real_escape_string(relay_auth_db(), $login) . "'");
+    }
+    relay_session_start();
+    $_SESSION['pwv'] = $u['pwv'];
+    return true;
+}
+
+/** Текущий пользователь (массив relay_user_info) или null. Удалённый, отключённый или сменивший пароль — выходит. */
+function relay_current_user_info(): ?array
+{
+    static $cache = false;
+    if ($cache !== false) {
+        return $cache;
+    }
+    relay_session_start();
+    $login = $_SESSION['login'] ?? null;
+    $u = is_string($login) ? relay_user_info($login) : null;
+    if ($login !== null && (!$u || !$u['enabled'] || ($u['pwv'] !== '' && ($_SESSION['pwv'] ?? '') !== $u['pwv']))) {
+        $_SESSION = [];
+        $u = null;
+    }
+    return $cache = $u;
 }
 
 function relay_current_user(): ?string
 {
-    relay_session_start();
-    return $_SESSION['login'] ?? null;
+    return relay_current_user_info()['login'] ?? null;
 }
 
-/** Требует входа. Для AJAX/POST отдаёт 401, для обычных страниц — редирект на login.php. */
+function relay_current_role(): string
+{
+    return relay_current_user_info()['role'] ?? 'viewer';
+}
+
+/** Требует входа. Для AJAX/POST отдаёт 401, для обычных страниц — редирект на login.php.
+ *  Пользователю «Просмотр» запрещены все POST-запросы (команды, изменения), кроме смены своего пароля. */
 function relay_require_auth(): string
 {
     $login = relay_current_user();
     if ($login !== null) {
+        if (relay_current_role() === 'viewer' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
+            && !(str_ends_with((string)($_SERVER['SCRIPT_NAME'] ?? ''), '/api/users.php') && ($_POST['action'] ?? '') === 'passwd')) {
+            relay_json(['error' => 'Недостаточно прав: у вас доступ только для просмотра'], 403);
+        }
         return $login;
     }
     $isAjax = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
@@ -477,7 +580,7 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
     if ($local) {
         $exists = relay_q($db, 'SELECT 1 FROM devices WHERE id = ?', [$deviceId]);
         if (!$exists || mysqli_num_rows($exists) === 0) {
-            throw new RuntimeException("Плата $deviceId ещё ни разу не выходила на связь");
+            throw new RuntimeException("Устройство $deviceId ещё ни разу не выходило на связь");
         }
         $cmdId = relay_next_cmd_id($db);
         relay_q($db, "INSERT INTO commands (cmd_id, device_id, command, relay_num, status, created_at) VALUES (?, ?, ?, ?, 'pending', NOW())",

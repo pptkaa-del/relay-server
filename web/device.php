@@ -3,19 +3,19 @@ require __DIR__ . '/aut/verificat.php';
 require __DIR__ . '/lib/layout.php';
 header('Cache-Control: no-store');
 $id = (int)($_GET['id'] ?? 0);
-layout_head("Плата #$id", 'devices', $login);
+layout_head("Устройство #$id", 'devices', $login);
 ?>
 <div class="page-head" id="head" data-id="<?= $id ?>">
   <div style="min-width:0">
     <div class="crumbs"><a href="/index.php">Устройства</a> / <span class="mono">#<?= $id ?></span></div>
-    <h1 id="d-name">Плата #<?= $id ?></h1>
+    <h1 id="d-name">Устройство #<?= $id ?></h1>
     <p id="d-addr"></p>
   </div>
   <div class="btn-row">
     <span id="d-badge"></span>
     <button class="btn" id="b-status"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Запросить статус</button>
     <button class="btn" id="b-edit"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Изменить</button>
-    <button class="btn bad" id="b-reboot"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Перезагрузить плату</button>
+    <button class="btn bad" id="b-reboot"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Перезагрузить устройство</button>
   </div>
 </div>
 
@@ -77,7 +77,7 @@ layout_head("Плата #$id", 'devices', $login);
 
 <dialog class="modal" id="edit">
   <form method="dialog" id="edit-form">
-    <div class="modal-head"><h2>Плата #<?= $id ?></h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-head"><h2>Устройство #<?= $id ?></h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
     <div class="modal-body">
       <div class="form-grid">
         <label class="field full">Название объекта<input class="input" name="name" maxlength="200" required></label>
@@ -89,7 +89,7 @@ layout_head("Плата #$id", 'devices', $login);
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60"></label>
         <fieldset class="fieldset">
           <legend>Калибровка напряжения АКБ</legend>
-          <p class="hint">Подайте на вход АКБ платы 6 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
+          <p class="hint">Подайте на вход АКБ устройства 6 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
             затем то же для 15 В. Напряжение считается по прямой через эти две точки.</p>
           <p class="hint" id="cal-current"></p>
           <div class="form-grid">
@@ -102,7 +102,7 @@ layout_head("Плата #$id", 'devices', $login);
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn ghost danger-text" type="button" id="b-delete" style="margin-right:auto">Удалить плату</button>
+      <button class="btn ghost danger-text" type="button" id="b-delete" style="margin-right:auto">Удалить устройство</button>
       <button class="btn" value="cancel" formnovalidate>Отмена</button>
       <button class="btn primary" value="save">Сохранить</button>
     </div>

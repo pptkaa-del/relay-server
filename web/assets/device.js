@@ -34,7 +34,7 @@
           <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button>
         </div></div>`;
     }).join('');
-    $('#relays-note').textContent = dev.online ? '' : 'Плата не на связи: команды выполнятся при подключении';
+    $('#relays-note').textContent = dev.online ? '' : 'Устройство не на связи: команды выполнятся при подключении';
   }
 
   function render() {
@@ -65,11 +65,11 @@
         <dt>Сообщений</dt><dd>за час ${+st.hour || 0} · за сутки ${+st.day || 0} · всего ${d.msg_count ?? 0}</dd>
       </dl>
       <details class="box" style="margin:12px -16px -16px"><summary>Сырые данные (HEX)</summary><div><code class="mono" style="word-break:break-all">${esc((m.payload_hex || '').replace(/(.{8})/g, '$1 '))}</code></div></details>`
-      : '<p class="muted">От платы ещё не было данных. Убедитесь, что она зарегистрирована: <code>sudo relay-device add ' + id + '</code></p>';
+      : '<p class="muted">От устройства ещё не было данных. Убедитесь, что оно зарегистрировано: <code>sudo relay-device add ' + id + '</code></p>';
 
     const lc = d.last_command;
     $('#info').innerHTML = `
-      <dt>ID платы</dt><dd class="mono">${d.id}</dd>
+      <dt>ID устройства</dt><dd class="mono">${d.id}</dd>
       <dt>MQTT логин</dt><dd class="mono">relay-${d.id}</dd>
       <dt>Топик команд</dt><dd class="mono">com/${d.id}</dd>
       <dt>Связь</dt><dd>${stateBadge(d.state)}</dd>
@@ -111,7 +111,7 @@
     if (!dev) return;
     const box = $('#battery');
     if (dev.bat_adc == null) {
-      box.innerHTML = '<p class="muted" style="margin:0">Плата не передаёт напряжение АКБ. Нужна прошивка v2.2 (протокол v2): в ней stat содержит значение АЦП АКБ.</p>';
+      box.innerHTML = '<p class="muted" style="margin:0">Устройство не передаёт напряжение АКБ. Нужна прошивка v2.2 (протокол v2): в ней stat содержит значение АЦП АКБ.</p>';
       return;
     }
     let j = { points: [], calibrated: false };
@@ -170,7 +170,7 @@
       if (!j.rows.length) box.innerHTML = '<div class="empty">Записей нет</div>';
       else if (kind === 'events') box.innerHTML = `<ul class="timeline">${html}</ul>`;
       else if (kind === 'messages') box.innerHTML = `<table class="tbl cards"><thead><tr><th>Время</th><th></th><th>Топик</th><th>Данные</th></tr></thead><tbody>${html}</tbody></table>`;
-      else box.innerHTML = `<table class="tbl"><thead><tr><th>cmd_id</th><th>Создана</th><th>Команда</th><th>Статус</th><th>Ответ платы</th></tr></thead><tbody>${html}</tbody></table>`;
+      else box.innerHTML = `<table class="tbl"><thead><tr><th>cmd_id</th><th>Создана</th><th>Команда</th><th>Статус</th><th>Ответ устройства</th></tr></thead><tbody>${html}</tbody></table>`;
     } else {
       (box.querySelector('tbody, ul') || box).insertAdjacentHTML('beforeend', html);
     }
@@ -194,7 +194,7 @@
     send(c, 5);
   }));
   $('#b-reboot').addEventListener('click', () => {
-    if (confirm(`Перезагрузить плату «${dev ? dev.name : id}»?\nПлата перестанет отвечать на 1–2 минуты, затем подключится снова и восстановит состояние реле.`)) send(5, 0);
+    if (confirm(`Перезагрузить устройство «${dev ? dev.name : id}»?\nУстройство перестанет отвечать на 1–2 минуты, затем подключится снова и восстановит состояние реле.`)) send(5, 0);
   });
   $('#tabs').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -209,7 +209,7 @@
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
     form.elements.cal_adc_6.value = dev.cal_adc_6 ?? ''; form.elements.cal_adc_15.value = dev.cal_adc_15 ?? '';
-    $('#cal-current').innerHTML = dev.bat_adc != null ? `Текущее значение АЦП: <b class="mono">${dev.bat_adc}</b> (${fmtTime(dev.bat_adc_ts)})` : 'Плата ещё не передавала значение АЦП АКБ.';
+    $('#cal-current').innerHTML = dev.bat_adc != null ? `Текущее значение АЦП: <b class="mono">${dev.bat_adc}</b> (${fmtTime(dev.bat_adc_ts)})` : 'Устройство ещё не передавало значение АЦП АКБ.';
     dev.relays.forEach(r => { form.elements['relay' + r.num].value = r.name; });
     dlg.showModal();
   });
@@ -222,11 +222,11 @@
   $('#edit').addEventListener('click', e => {
     const b = e.target.closest('[data-cal]'); if (!b) return;
     if (dev && dev.bat_adc != null) form.elements[b.dataset.cal].value = dev.bat_adc;
-    else toast('Плата ещё не передавала значение АЦП', 'err');
+    else toast('Устройство ещё не передавало значение АЦП', 'err');
   });
   $('#b-delete').addEventListener('click', async () => {
-    if (!confirm(`Удалить плату #${id}?\nЕё доступ к брокеру будет закрыт, состояние и журнал событий — удалены.\nВернуть плату можно кнопкой «Добавить плату».`)) return;
-    try { const j = await api('/api/devices.php', { action: 'delete', id }, true); alert('Плата удалена.\n' + j.note); location.href = '/index.php'; }
+    if (!confirm(`Удалить устройство #${id}?\nЕго доступ к брокеру будет закрыт, состояние и журнал событий — удалены.\nВернуть устройство можно кнопкой «Добавить устройство».`)) return;
+    try { const j = await api('/api/devices.php', { action: 'delete', id }, true); alert('Устройство удалено.\n' + j.note); location.href = '/index.php'; }
     catch (e) { toast(e.message, 'err'); }
   });
 

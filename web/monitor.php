@@ -5,7 +5,7 @@ header('Cache-Control: no-store');
 layout_head('Монитор', 'monitor', $login);
 ?>
 <div class="page-head">
-  <div><h1>MQTT монитор</h1><p>Все сообщения выбранного брокера в реальном времени и отправка ответов платам</p></div>
+  <div><h1>MQTT монитор</h1><p>Все сообщения выбранного брокера в реальном времени и отправка команд устройствам</p></div>
 </div>
 
 <div class="broker-bar">
@@ -18,7 +18,7 @@ layout_head('Монитор', 'monitor', $login);
 
 <div class="monitor">
   <section class="card">
-    <div class="card-head"><h2>Платы</h2><span class="muted" id="devcount"></span></div>
+    <div class="card-head"><h2>Устройства</h2><span class="muted" id="devcount"></span></div>
     <div class="side-list" id="devices"><div class="empty">Загрузка…</div></div>
   </section>
 
@@ -27,7 +27,7 @@ layout_head('Монитор', 'monitor', $login);
       <div class="card-head"><h2>Отправить команду</h2></div>
       <div class="card-body">
         <div class="send-row">
-          <label class="field">Плата (ID)<input class="input" id="c-device" type="number" min="1" placeholder="ID" style="width:110px"></label>
+          <label class="field">Устройство (ID)<input class="input" id="c-device" type="number" min="1" placeholder="ID" style="width:110px"></label>
           <label class="field">Реле<select class="input" id="c-relay" style="width:120px">
             <option value="0">все</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">замок</option></select></label>
           <div class="btn-row">
@@ -35,7 +35,7 @@ layout_head('Монитор', 'monitor', $login);
             <button class="btn bad" data-cmd="2">Выключить</button>
             <button class="btn" data-cmd="3">Перезапуск реле</button>
             <button class="btn" data-cmd="4">Запрос статуса</button>
-            <button class="btn danger-text" data-cmd="5"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Перезагрузить плату</button>
+            <button class="btn danger-text" data-cmd="5"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Перезагрузить устройство</button>
           </div>
         </div>
         <div class="result" id="result"></div>
@@ -74,7 +74,7 @@ layout_head('Монитор', 'monitor', $login);
   <div class="modal-head"><h2>Брокеры MQTT</h2><button class="btn ghost sm" data-close>✕</button></div>
   <div class="modal-body">
     <p class="muted" style="margin-top:0">Сервер постоянно подключён ко всем включённым брокерам и сохраняет их сообщения в журнал.
-      Платы и команды собственного брокера обрабатываются полностью; на сторонних брокерах можно наблюдать трафик и отправлять команды платам.</p>
+      Устройства и команды собственного брокера обрабатываются полностью; на сторонних брокерах можно наблюдать трафик и отправлять команды устройствам.</p>
     <div id="broker-list"></div>
     <div style="margin-top:12px"><button class="btn primary" id="b-add">+ Добавить брокер</button></div>
   </div>

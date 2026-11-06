@@ -62,7 +62,7 @@ switch ($action) {
             $fresh = $now - (int)$r['ts'] <= RELAY_OFFLINE_AFTER;
             $out[] = [
                 'id' => (int)$r['id'],
-                'name' => $r['name_obj'] ?: 'Плата ' . $r['id'],
+                'name' => $r['name_obj'] ?: 'Устройство ' . $r['id'],
                 'ts' => (int)$r['ts'],
                 'relays' => [$d['r1'] ?? null, $d['r2'] ?? null, $d['r3'] ?? null, $d['r4'] ?? null],
                 'signal' => $d['sl'] ?? null,
