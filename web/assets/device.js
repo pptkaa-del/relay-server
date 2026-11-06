@@ -45,6 +45,14 @@
     $('#d-badge').innerHTML = stateBadge(d.state);
     renderRelays();
 
+    // плата ver_5_1 (протокол v3): замок и геркон двери
+    const hasLock = d.door_state != null;
+    $('#lockcard').classList.toggle('hidden', !hasLock);
+    if (hasLock) {
+      $('#lockinfo').innerHTML = `<dt>Дверь</dt><dd>${d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</dd>
+        <dt>Замок</dt><dd>${d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : 'обесточен'}</dd>`;
+    }
+
     const m = d.last_message;
     const st = d.stats || {};
     $('#lastdata').innerHTML = m ? `
@@ -130,7 +138,7 @@
   }
 
   /* ---------- Журналы ---------- */
-  const EV_ICON = { created: 'plug', online: 'check', offline: 'x', relay: 'bolt', alarm: 'battery', alarm_clear: 'battery', command: 'send', reply: 'chat', reboot: 'power', info: 'info' };
+  const EV_ICON = { created: 'plug', online: 'check', offline: 'x', relay: 'bolt', alarm: 'battery', alarm_clear: 'battery', command: 'send', reply: 'chat', reboot: 'power', info: 'info', door: 'alert', lock: 'plug' };
   function logParams() {
     const p = { id, kind };
     if ($('#f-from').value) p.from = $('#f-from').value;
@@ -183,6 +191,11 @@
     send(c, 0);
   }));
   $('#b-status').addEventListener('click', () => send(4, 0));
+  $$('[data-lock]').forEach(b => b.addEventListener('click', () => {
+    const c = +b.dataset.lock;
+    if (c === 3 && !confirm(`Открыть замок на плате «${dev ? dev.name : id}»?`)) return;
+    send(c, 5);
+  }));
   $('#b-reboot').addEventListener('click', () => {
     if (confirm(`Перезагрузить плату «${dev ? dev.name : id}»?\nПлата перестанет отвечать на 1–2 минуты, затем подключится снова и восстановит состояние реле.`)) send(5, 0);
   });

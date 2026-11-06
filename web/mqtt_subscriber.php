@@ -79,7 +79,7 @@ function handleStat(array $d, bool $retained): void
     $alarm = (int)$d['alarm'];
     $r = [1 => (int)$d['r1'], 2 => (int)$d['r2'], 3 => (int)$d['r3'], 4 => (int)$d['r4']];
 
-    $current = mysqli_fetch_assoc(relay_q($c, 'SELECT status, name, battery_power, conn_state FROM devices WHERE id = ?', [$id]));
+    $current = mysqli_fetch_assoc(relay_q($c, 'SELECT status, name, battery_power, conn_state, lock_state, door_state FROM devices WHERE id = ?', [$id]));
 
     // 1. Новое устройство
     if (!$current) {
@@ -105,6 +105,9 @@ function handleStat(array $d, bool $retained): void
         if (isset($d['bat_adc'])) {
             relay_q($c, 'UPDATE devices SET bat_adc = ?, bat_adc_at = NOW() WHERE id = ?', [(int)$d['bat_adc'], $id]);
         }
+        if (isset($d['door'])) {
+            relay_q($c, 'UPDATE devices SET lock_state = ?, door_state = ? WHERE id = ?', [(int)$d['lock'], (int)$d['door'], $id]);
+        }
         relay_q($c, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($c, $id, 'created', 'Плата впервые вышла на связь', 'success', $d);
         writeLog("STAT: создано новое устройство $id");
@@ -114,6 +117,20 @@ function handleStat(array $d, bool $retained): void
     relay_q($c, 'UPDATE devices SET last_data_at = NOW(), last_data_topic = ?, msg_count = msg_count + 1 WHERE id = ?', ['stat', $id]);
     if (isset($d['bat_adc'])) {
         relay_q($c, 'UPDATE devices SET bat_adc = ?, bat_adc_at = NOW() WHERE id = ?', [(int)$d['bat_adc'], $id]);
+    }
+    // протокол v3 (плата ver_5_1): дверь (геркон) и замок
+    if (isset($d['door'])) {
+        $door = (int)$d['door'];
+        $lock = (int)$d['lock'];
+        if (!$retained && $current['door_state'] !== null && (int)$current['door_state'] !== $door) {
+            $door === 1
+                ? relay_event($c, $id, 'door', 'Дверь открыта', 'warning')
+                : relay_event($c, $id, 'door', 'Дверь закрыта', 'info');
+        }
+        if (!$retained && $current['lock_state'] !== null && (int)$current['lock_state'] !== $lock) {
+            relay_event($c, $id, 'lock', $lock === 1 ? 'Замок под напряжением' : 'Замок обесточен', 'info');
+        }
+        relay_q($c, 'UPDATE devices SET lock_state = ?, door_state = ? WHERE id = ?', [$lock, $door, $id]);
     }
 
     // 2. Retained-сообщение (старое состояние из брокера): обновляем данные, но не last_seen

@@ -175,3 +175,12 @@ CREATE TABLE IF NOT EXISTS `pending_devices` (
     `ignored` TINYINT(1) NOT NULL DEFAULT 0,
     INDEX `idx_last_seen` (`last_seen`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.3: плата OFFON ver_5_1 (ESP32) — протокол v3: замок и геркон двери
+-- ---------------------------------------------------------------------------
+ALTER TABLE `devices`
+    ADD COLUMN IF NOT EXISTS `lock_state` TINYINT(1) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `door_state` TINYINT(1) DEFAULT NULL;
+ALTER TABLE `device_events`
+    MODIFY `type` ENUM('created','online','offline','relay','alarm','alarm_clear','command','reply','reboot','info','door','lock') NOT NULL;

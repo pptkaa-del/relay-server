@@ -137,10 +137,10 @@ const App = (() => {
     if (!d) return '<span class="tag">двоичные данные</span>';
     if (d.type === 'stat') {
       const rel = [d.r1, d.r2, d.r3, d.r4].map((v, i) => `${i + 1}:${RSTATE[v] ?? v}`).join(' ');
-      return `<b>stat</b> · плата #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}`;
+      return `<b>stat</b> · плата #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}${d.door != null ? ' · дверь ' + (d.door ? '<span class="badge warn">открыта</span>' : 'закрыта') + ' · замок ' + (d.lock ? 'вкл' : 'выкл') : ''}`;
     }
     if (d.type === 'rep') return `<b>rep</b> · плата #${d.id} · команда ${d.cmd_id} · ${d.success === 1 ? '<span class="badge success">выполнена</span>' : '<span class="badge error">не выполнена</span>'}`;
-    if (d.type === 'com') return `<b>${esc(d.command_name)}</b>${[1, 2, 3].includes(d.command) ? ' · ' + (d.rel_number ? 'реле ' + d.rel_number : 'все реле') : ''} · cmd_id ${d.cmd_id}`;
+    if (d.type === 'com') return `<b>${esc(d.command_name)}</b>${[1, 2, 3].includes(d.command) ? ' · ' + (d.rel_number === 5 ? 'замок' : d.rel_number ? 'реле ' + d.rel_number : 'все реле') : ''} · cmd_id ${d.cmd_id}`;
     if (d.type === 'json') return `<span class="mono">${esc(JSON.stringify(d.data))}</span>`;
     return esc(d.text);
   }
@@ -148,6 +148,7 @@ const App = (() => {
   /* ---------- Команды платам ---------- */
   const CMD = { 1: 'Включить', 2: 'Выключить', 3: 'Перезапуск реле', 4: 'Запрос статуса', 5: 'Перезагрузка платы' };
   function cmdLabel(command, relay) {
+    if (relay === 5) return { 1: 'Замок: подать питание', 2: 'Замок: снять питание', 3: 'Замок: открыть' }[command] || CMD[command];
     return CMD[command] + ([1, 2, 3].includes(command) ? ' · ' + (relay ? 'реле ' + relay : 'все реле') : '');
   }
   /**

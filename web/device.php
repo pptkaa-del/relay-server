@@ -52,6 +52,17 @@ layout_head("Плата #$id", 'devices', $login);
       <div class="card-head"><h2>Последнее поступление данных</h2></div>
       <div class="card-body" id="lastdata"><span class="muted">Загрузка…</span></div>
     </section>
+    <section class="card o-lock hidden" id="lockcard">
+      <div class="card-head"><h2>Замок и дверь</h2></div>
+      <div class="card-body">
+        <dl class="kv" id="lockinfo"></dl>
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn primary" data-lock="3">Открыть замок</button>
+          <button class="btn" data-lock="1">Подать питание</button>
+          <button class="btn" data-lock="2">Снять питание</button>
+        </div>
+      </div>
+    </section>
     <section class="card o-bat">
       <div class="card-head"><h2>Напряжение АКБ</h2>
         <div class="seg" id="bat-range"><button data-h="24" class="on">24 ч</button><button data-h="168">7 дн</button></div></div>

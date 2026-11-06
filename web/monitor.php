@@ -29,7 +29,7 @@ layout_head('Монитор', 'monitor', $login);
         <div class="send-row">
           <label class="field">Плата (ID)<input class="input" id="c-device" type="number" min="1" placeholder="ID" style="width:110px"></label>
           <label class="field">Реле<select class="input" id="c-relay" style="width:120px">
-            <option value="0">все</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+            <option value="0">все</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">замок</option></select></label>
           <div class="btn-row">
             <button class="btn ok" data-cmd="1">Включить</button>
             <button class="btn bad" data-cmd="2">Выключить</button>

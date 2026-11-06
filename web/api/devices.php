@@ -28,6 +28,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_19, g.cal_adc_26,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
+               d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
                d.status, d.version, d.signal_level, d.battery_power AS alarm, d.conn_state, d.msg_count,
                d.last_seen, UNIX_TIMESTAMP(d.last_seen) AS last_seen_ts,
@@ -54,7 +55,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
             unset($d["name_reley_$i"]);
         }
         $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_adc_19'], $d['cal_adc_26']);
-        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts', 'cal_adc_19', 'cal_adc_26'] as $k) {
+        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts', 'cal_adc_19', 'cal_adc_26', 'lock_state', 'door_state'] as $k) {
             $d[$k] = $d[$k] === null ? null : (int)$d[$k];
         }
         $d['registered'] = (bool)$d['registered'];

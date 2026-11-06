@@ -49,6 +49,7 @@
         <span class="item">${signalBars(d.signal_level)}</span>
         ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
         ${d.alarm === 1 && d.online ? `<span class="badge alarm">${ICONS.battery}АКБ</span>` : ''}
+        ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}
       </div>
       <div class="relays">${d.relays.map(r => relayHtml(d, r)).join('')}</div>
       <div class="dev-foot">

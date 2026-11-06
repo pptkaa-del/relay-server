@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.2';
+const RELAY_VERSION       = '3.3';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -155,6 +155,11 @@ function relay_decode(string $topic, string $payload): ?array
         $d['alarm'] = $len >= 36 ? unpack('V', substr($payload, 32, 4))[1] : 0;
         if ($len >= 40) { // протокол v2: АЦП напряжения АКБ
             $d['bat_adc'] = unpack('V', substr($payload, 36, 4))[1];
+        }
+        if ($len >= 48) { // протокол v3 (плата ver_5_1): замок и дверь
+            $x = unpack('Vlock/Vdoor', substr($payload, 40, 8));
+            $d['lock'] = $x['lock'];
+            $d['door'] = $x['door'];
         }
         return ['type' => 'stat'] + $d;
     }
@@ -424,8 +429,13 @@ function relay_next_cmd_id(mysqli $db): int
     return $next;
 }
 
+const RELAY_LOCK = 5; // замок платы ver_5_1 — «реле 5» в командах 1–3
+
 function relay_command_label(int $command, int $relay): string
 {
+    if ($relay === RELAY_LOCK) {
+        return [1 => 'замок: подать питание', 2 => 'замок: снять питание', 3 => 'замок: открыть (импульс)'][$command] ?? "замок: команда $command";
+    }
     $name = RELAY_COMMANDS[$command] ?? "команда $command";
     return in_array($command, [1, 2, 3], true) ? $name . ' · ' . ($relay ? "реле $relay" : 'все реле') : $name;
 }
@@ -441,7 +451,8 @@ function relay_command_label(int $command, int $relay): string
 function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay, ?string $user = null,
                             int $brokerId = RELAY_LOCAL_BROKER): int
 {
-    if ($deviceId <= 0 || $command < 1 || $command > 5 || $relay < 0 || $relay > 4) {
+    if ($deviceId <= 0 || $command < 1 || $command > 5 || $relay < 0 || $relay > RELAY_LOCK
+        || ($relay === RELAY_LOCK && $command > 3)) {
         throw new RuntimeException('Неверные параметры команды');
     }
     if ($command >= 4) {
@@ -467,7 +478,9 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
 
     $topic = "com/$deviceId";
     $payload = pack('VVV', $cmdId, $command, $relay);
-    $retain = in_array($command, [1, 2], true);
+    // retain только для реле 1–4: плата восстановит их состояние после переподключения.
+    // Команды замку не сохраняются в брокере — иначе замок срабатывал бы при каждом переподключении.
+    $retain = in_array($command, [1, 2], true) && $relay !== RELAY_LOCK;
     if ($local) {
         // событие пишем до отправки: плата может ответить раньше, чем завершится publish
         relay_event($db, $deviceId, $command === 5 ? 'reboot' : 'command', 'Команда: ' . relay_command_label($command, $relay), 'info',
