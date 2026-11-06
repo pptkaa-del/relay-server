@@ -184,3 +184,17 @@ ALTER TABLE `devices`
     ADD COLUMN IF NOT EXISTS `door_state` TINYINT(1) DEFAULT NULL;
 ALTER TABLE `device_events`
     MODIFY `type` ENUM('created','online','offline','relay','alarm','alarm_clear','command','reply','reboot','info','door','lock') NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- v3.4: наклейки с серийным номером — журнал выпущенных номеров
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `serial_labels` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `sn` VARCHAR(32) NOT NULL,
+    `device_id` INT(11) DEFAULT NULL,
+    `note` VARCHAR(200) DEFAULT NULL,
+    `user_login` VARCHAR(64) DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_sn` (`sn`),
+    INDEX `idx_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
