@@ -38,6 +38,7 @@ layout_head('Наклейки', 'labels', $login);
         <div class="result" id="lres"></div>
         <div class="btn-row" style="margin-top:12px">
           <button class="btn primary" id="b-png">Скачать PNG</button>
+          <button class="btn" id="b-saveas">Сохранить как…</button>
           <button class="btn" id="b-print">Печать</button>
         </div>
         <p class="muted" style="font-size:12.5px;margin:12px 0 0">Серия: номера увеличиваются на 1 с сохранением длины (…059, …060, …061).
@@ -54,4 +55,36 @@ layout_head('Наклейки', 'labels', $login);
 </div>
 
 <div id="print-area" class="print-area" aria-hidden="true"></div>
+
+<dialog class="modal" id="saveas">
+  <form method="dialog" id="sf">
+    <div class="modal-head"><h2>Сохранить как</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <label class="field full" id="sf-name-wrap">Имя файла
+          <div class="cal-row"><input class="input mono" name="name" maxlength="120" required><span class="muted" id="sf-ext">.png</span></div>
+          <span class="muted" id="sf-name-hint"></span>
+        </label>
+        <label class="field">Формат
+          <select class="input" name="format">
+            <option value="png">PNG — без потерь (для печати)</option>
+            <option value="jpeg">JPEG — меньше размер</option>
+          </select>
+        </label>
+        <label class="field">Разрешение
+          <select class="input" name="res">
+            <option value="native">исходное — 1942 × 833</option>
+            <option value="300">300 dpi при ширине печати</option>
+            <option value="600">600 dpi при ширине печати</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted" id="sf-info" style="font-size:12.5px;margin:12px 0 0"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" value="cancel" formnovalidate>Отмена</button>
+      <button class="btn primary" value="save">Сохранить</button>
+    </div>
+  </form>
+</dialog>
 <?php layout_foot(['labels.js']); ?>

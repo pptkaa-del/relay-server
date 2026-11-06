@@ -102,6 +102,81 @@
     a.href = labelPng(sn); a.download = `label_SN_${sn}.png`;
     document.body.appendChild(a); a.click(); a.remove();
   }
+  /* ---------- «Сохранить как» ---------- */
+  const sdlg = $('#saveas'), sf = $('#sf'), SF = k => sf.elements[k];
+  const canPickFile = typeof window.showSaveFilePicker === 'function';
+  const canPickDir = typeof window.showDirectoryPicker === 'function';
+  const MIME = { png: 'image/png', jpeg: 'image/jpeg' }, EXT = { png: '.png', jpeg: '.jpg' };
+  let saveList = [];
+
+  function targetSize() {
+    const r = SF('res').value;
+    if (r === 'native') return [W, H];
+    const mm = Math.max(20, Math.min(200, +F('width').value || 70));
+    const w = Math.round(mm / 25.4 * +r);
+    return [w, Math.round(w * H / W)];
+  }
+  function fileName(pattern, sn) {
+    const base = (pattern.includes('{sn}') ? pattern.split('{sn}').join(sn) : pattern).replace(/[\\/:*?"<>|]+/g, '_').trim() || ('label_SN_' + sn);
+    return base.replace(/\.(png|jpe?g)$/i, '') + EXT[SF('format').value];
+  }
+  function labelBlob(sn) {
+    const [tw, th] = targetSize();
+    const src = document.createElement('canvas'); src.width = W; src.height = H; drawLabel(src, sn);
+    const c = document.createElement('canvas'); c.width = tw; c.height = th;
+    const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, tw, th); ctx.drawImage(src, 0, 0, tw, th);
+    return new Promise(r => c.toBlob(r, MIME[SF('format').value], 0.95));
+  }
+  function updateSaveInfo() {
+    const [tw, th] = targetSize(); const fmt = SF('format').value;
+    $('#sf-ext').textContent = saveList.length > 1 ? '' : EXT[fmt];
+    const many = saveList.length > 1;
+    $('#sf-name-hint').textContent = many ? `{sn} заменяется номером, пример: ${fileName(SF('name').value, saveList[0])}` : '';
+    $('#sf-info').innerHTML = `${many ? saveList.length + ' файлов' : '1 файл'}, ${tw} × ${th} px, ${fmt.toUpperCase()}. ` +
+      (many ? (canPickDir ? 'Далее выберите папку — все файлы сохранятся в неё.' : 'Браузер не умеет выбирать папку: файлы будут скачаны по одному в папку загрузок.')
+            : (canPickFile ? 'Далее откроется окно выбора папки и имени файла.' : 'Браузер не поддерживает выбор места (нужен Chrome/Edge и HTTPS): файл будет скачан с этим именем.'));
+  }
+  $('#b-saveas').addEventListener('click', async () => {
+    await ready; const c = current(); if (c.error) return res('err', c.error);
+    saveList = c.list;
+    SF('name').value = saveList.length > 1 ? 'label_SN_{sn}' : 'label_SN_' + saveList[0];
+    updateSaveInfo(); sdlg.showModal(); SF('name').select();
+  });
+  sf.addEventListener('input', updateSaveInfo);
+  sdlg.addEventListener('close', async () => {
+    if (sdlg.returnValue !== 'save' || !saveList.length) return;
+    if (!confirmDups(saveList)) return;
+    const fmt = SF('format').value, pattern = SF('name').value;
+    try {
+      if (saveList.length === 1 && canPickFile) {
+        const handle = await window.showSaveFilePicker({ suggestedName: fileName(pattern, saveList[0]),
+          types: [{ description: fmt === 'png' ? 'Изображение PNG' : 'Изображение JPEG', accept: { [MIME[fmt]]: [EXT[fmt]] } }] });
+        const wr = await handle.createWritable(); await wr.write(await labelBlob(saveList[0])); await wr.close();
+        toast('Сохранено: ' + handle.name, 'ok');
+      } else if (saveList.length > 1 && canPickDir) {
+        const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+        for (const sn of saveList) {
+          const fh = await dir.getFileHandle(fileName(pattern, sn), { create: true });
+          const wr = await fh.createWritable(); await wr.write(await labelBlob(sn)); await wr.close();
+        }
+        toast(`Сохранено файлов: ${saveList.length} в папку «${dir.name}»`, 'ok');
+      } else {
+        for (const sn of saveList) {
+          const url = URL.createObjectURL(await labelBlob(sn));
+          const a = document.createElement('a'); a.href = url; a.download = fileName(pattern, sn);
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          if (saveList.length > 1) await new Promise(r => setTimeout(r, 250));
+        }
+      }
+      logIssued(saveList);
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;  // пользователь закрыл окно выбора
+      toast('Не удалось сохранить: ' + e.message, 'err');
+    }
+  });
+
   async function logIssued(list) {
     if (!F('log').checked) return;
     try {
