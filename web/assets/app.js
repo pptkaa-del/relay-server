@@ -91,11 +91,13 @@ const App = (() => {
     return `<span class="signal s${lvl}" title="Сигнал ${sl}/31 — ${word}"><i></i><i></i><i></i><i></i></span>`;
   }
 
-  /** Напряжение АКБ: цвет по уровню (24-вольтовая АКБ: < 22 В — плохо, < 24 В — внимание) */
-  const batClass = v => v == null ? 'raw' : v < 22 ? 'bad' : v < 24 ? 'warn' : 'ok';
+  /** Калибровка АКБ: опорные напряжения (как RELAY_BAT_V_LOW/HIGH на сервере) */
+  const BAT_V_LOW = 6, BAT_V_HIGH = 15;
+  /** Напряжение АКБ: цвет по уровню (12-вольтовая АКБ: < 11,5 В — разряжена, < 12,2 В — внимание) */
+  const batClass = v => v == null ? 'raw' : v < 11.5 ? 'bad' : v < 12.2 ? 'warn' : 'ok';
   function batteryHtml(d) {
     if (d.bat_voltage != null) return `<span class="bat ${batClass(d.bat_voltage)}" title="Напряжение АКБ (АЦП ${d.bat_adc})">${ICONS.battery}${d.bat_voltage.toFixed(1)} В</span>`;
-    if (d.bat_adc != null) return `<span class="bat raw" title="АКБ не откалибрована — укажите значения АЦП при 19 В и 26 В">${ICONS.battery}АЦП ${d.bat_adc}</span>`;
+    if (d.bat_adc != null) return `<span class="bat raw" title="АКБ не откалибрована — укажите значения АЦП при 6 В и 15 В">${ICONS.battery}АЦП ${d.bat_adc}</span>`;
     return '';
   }
 
@@ -180,5 +182,5 @@ const App = (() => {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(t); run(); } });
   }
 
-  return { batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  return { BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

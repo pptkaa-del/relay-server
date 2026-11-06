@@ -53,11 +53,11 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="Реле 4"></label>
         <fieldset class="fieldset">
           <legend>Калибровка напряжения АКБ (необязательно)</legend>
-          <p class="hint">Подайте на вход АКБ платы 19 В и 26 В от лабораторного источника и запишите показания АЦП —
+          <p class="hint">Подайте на вход АКБ платы 6 В и 15 В от лабораторного источника и запишите показания АЦП —
             их видно на странице платы и в мониторе (поле «АЦП АКБ» пакета stat). Калибровку можно задать и позже.</p>
           <div class="form-grid">
-            <label class="field">АЦП при 19 В<input class="input" name="cal_adc_19" type="number" min="0" max="65535" step="1" placeholder="например, 590"></label>
-            <label class="field">АЦП при 26 В<input class="input" name="cal_adc_26" type="number" min="0" max="65535" step="1" placeholder="например, 808"></label>
+            <label class="field">АЦП при 6 В<input class="input" name="cal_adc_6" type="number" min="0" max="65535" step="1" placeholder="например, 150"></label>
+            <label class="field">АЦП при 15 В<input class="input" name="cal_adc_15" type="number" min="0" max="65535" step="1" placeholder="например, 375"></label>
           </div>
         </fieldset>
       </div>

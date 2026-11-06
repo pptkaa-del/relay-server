@@ -334,7 +334,7 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 .bat.ok { color: var(--ok); } .bat.warn { color: var(--warn); } .bat.bad { color: var(--bad); } .bat.raw { color: var(--muted); }
 .bat svg { width: 15px; height: 15px; }
 .bat-big { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.bat-scale { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bad) 0%, var(--warn) 45%, var(--ok) 75%); margin: 10px 0 4px; }
+.bat-scale { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--bad) 0%, var(--bad) 56%, var(--warn) 64%, var(--warn) 66%, var(--ok) 72%); /* 6–15 В: красный до 11,5 В, жёлтый до 12,2 В */ margin: 10px 0 4px; }
 .bat-scale i { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--surface); }
 .bat-scale-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .chart { width: 100%; height: 120px; display: block; margin-top: 12px; }

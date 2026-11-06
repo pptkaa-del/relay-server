@@ -89,14 +89,14 @@ layout_head("Плата #$id", 'devices', $login);
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60"></label>
         <fieldset class="fieldset">
           <legend>Калибровка напряжения АКБ</legend>
-          <p class="hint">Подайте на вход АКБ платы 19 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
-            затем то же для 26 В. Напряжение считается по прямой через эти две точки.</p>
+          <p class="hint">Подайте на вход АКБ платы 6 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
+            затем то же для 15 В. Напряжение считается по прямой через эти две точки.</p>
           <p class="hint" id="cal-current"></p>
           <div class="form-grid">
-            <div class="cal-row"><label class="field">АЦП при 19 В<input class="input" name="cal_adc_19" type="number" min="0" max="65535" step="1"></label>
-              <button class="btn" type="button" data-cal="cal_adc_19">Текущее</button></div>
-            <div class="cal-row"><label class="field">АЦП при 26 В<input class="input" name="cal_adc_26" type="number" min="0" max="65535" step="1"></label>
-              <button class="btn" type="button" data-cal="cal_adc_26">Текущее</button></div>
+            <div class="cal-row"><label class="field">АЦП при 6 В<input class="input" name="cal_adc_6" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_adc_6">Текущее</button></div>
+            <div class="cal-row"><label class="field">АЦП при 15 В<input class="input" name="cal_adc_15" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_adc_15">Текущее</button></div>
           </div>
         </fieldset>
       </div>

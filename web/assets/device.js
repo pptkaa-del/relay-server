@@ -90,7 +90,7 @@
     const W = 600, H = 120, P = 2;
     const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 1);
     let lo = Math.min(...pts.map(val)), hi = Math.max(...pts.map(val));
-    if (calibrated) { lo = Math.min(lo, 19); hi = Math.max(hi, 26); }
+    if (calibrated) { lo = Math.min(lo, App.BAT_V_LOW); hi = Math.max(hi, App.BAT_V_HIGH); }
     if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
     const x = t => P + (W - P - 4) * (t - t0) / (t1 - t0);
     const y = v => 6 + (H - 20) * (1 - (v - lo) / (hi - lo));
@@ -101,7 +101,7 @@
     const minV = Math.min(...vs), maxV = Math.max(...vs);
     // подписи — обычным текстом: SVG растягивается по ширине (preserveAspectRatio="none"), текст в нём исказился бы
     return `<div class="muted" style="font-size:12px;margin-top:12px">${calibrated ? 'Напряжение' : 'АЦП'}: мин ${f(minV)} · макс ${f(maxV)} · замеров ${pts.length}
-        ${calibrated ? ' · шкала 19–26 В' : ''}</div>
+        ${calibrated ? ` · шкала ${App.BAT_V_LOW}–${App.BAT_V_HIGH} В` : ''}</div>
       <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="График напряжения АКБ">
       <line class="grid" x1="0" x2="${W}" y1="${y(hi)}" y2="${y(hi)}"/><line class="grid" x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}"/>
       <polygon class="area" points="${area}"/><polyline class="line" points="${line}"/></svg>
@@ -117,14 +117,14 @@
     let j = { points: [], calibrated: false };
     try { j = await api('/api/devices.php', { action: 'battery', id, hours: batHours }); } catch (e) {}
     const v = dev.bat_voltage;
-    const pos = v == null ? 0 : Math.max(0, Math.min(100, (v - 19) / 7 * 100));
+    const pos = v == null ? 0 : Math.max(0, Math.min(100, (v - App.BAT_V_LOW) / (App.BAT_V_HIGH - App.BAT_V_LOW) * 100));
     const head = v != null
       ? `<div class="bat-big bat ${App.batClass(v)}">${v.toFixed(2)} В</div>
          <div class="bat-scale"><i style="left:${pos}%"></i></div>
-         <div class="bat-scale-labels"><span>19 В</span><span>22,5 В</span><span>26 В</span></div>`
+         <div class="bat-scale-labels"><span>${App.BAT_V_LOW} В</span><span>${String((App.BAT_V_LOW + App.BAT_V_HIGH) / 2).replace('.', ',')} В</span><span>${App.BAT_V_HIGH} В</span></div>`
       : `<div class="bat-big bat raw">АЦП ${dev.bat_adc}</div>
-         <p class="muted" style="margin:6px 0 0">Напряжение не рассчитано: задайте калибровку — «Изменить» → значения АЦП при 19 В и при 26 В.</p>`;
-    const cal = dev.cal_adc_19 != null && dev.cal_adc_26 != null ? ` · калибровка: ${dev.cal_adc_19} → 19 В, ${dev.cal_adc_26} → 26 В` : '';
+         <p class="muted" style="margin:6px 0 0">Напряжение не рассчитано: задайте калибровку — «Изменить» → значения АЦП при 6 В и при 15 В.</p>`;
+    const cal = dev.cal_adc_6 != null && dev.cal_adc_15 != null ? ` · калибровка: ${dev.cal_adc_6} → 6 В, ${dev.cal_adc_15} → 15 В` : '';
     box.innerHTML = head + `<div class="muted" style="font-size:12.5px;margin-top:8px">АЦП ${dev.bat_adc} · ${fmtTime(dev.bat_adc_ts)}${cal}</div>` + chartSvg(j.points, j.calibrated);
   }
   $('#bat-range').addEventListener('click', e => {
@@ -211,7 +211,7 @@
   $('#b-edit').addEventListener('click', () => {
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
-    form.elements.cal_adc_19.value = dev.cal_adc_19 ?? ''; form.elements.cal_adc_26.value = dev.cal_adc_26 ?? '';
+    form.elements.cal_adc_6.value = dev.cal_adc_6 ?? ''; form.elements.cal_adc_15.value = dev.cal_adc_15 ?? '';
     $('#cal-current').innerHTML = dev.bat_adc != null ? `Текущее значение АЦП: <b class="mono">${dev.bat_adc}</b> (${fmtTime(dev.bat_adc_ts)})` : 'Плата ещё не передавала значение АЦП АКБ.';
     dev.relays.forEach(r => { form.elements['relay' + r.num].value = r.name; });
     dlg.showModal();
@@ -219,7 +219,7 @@
   dlg.addEventListener('close', async () => {
     if (dlg.returnValue !== 'save') return;
     const p = { action: 'update', id };
-    for (const k of ['name', 'address', 'coordinates', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_19', 'cal_adc_26']) p[k] = form.elements[k].value;
+    for (const k of ['name', 'address', 'coordinates', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_6', 'cal_adc_15']) p[k] = form.elements[k].value;
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }
   });
   $('#edit').addEventListener('click', e => {

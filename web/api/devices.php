@@ -26,7 +26,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         SELECT x.id,
                COALESCE(NULLIF(g.name_obj, ''), d.name, CONCAT('Устройство ', x.id)) AS name,
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
-               COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_19, g.cal_adc_26,
+               COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
@@ -54,8 +54,8 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                               'state' => $relays[$id][$i]['state'] ?? null, 'ts' => $relays[$id][$i]['ts'] ?? null];
             unset($d["name_reley_$i"]);
         }
-        $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_adc_19'], $d['cal_adc_26']);
-        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts', 'cal_adc_19', 'cal_adc_26', 'lock_state', 'door_state'] as $k) {
+        $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_adc_6'], $d['cal_adc_15']);
+        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts', 'cal_adc_6', 'cal_adc_15', 'lock_state', 'door_state'] as $k) {
             $d[$k] = $d[$k] === null ? null : (int)$d[$k];
         }
         $d['registered'] = (bool)$d['registered'];
@@ -112,13 +112,13 @@ switch ($action) {
         $f = fn($k, $max = 200) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
         $name = $f('name') ?: "Устройство $id";
         try {
-            $cal19 = relay_cal_value($_POST['cal_adc_19'] ?? '');
-            $cal26 = relay_cal_value($_POST['cal_adc_26'] ?? '');
+            $cal6 = relay_cal_value($_POST['cal_adc_6'] ?? '');
+            $cal15 = relay_cal_value($_POST['cal_adc_15'] ?? '');
         } catch (RuntimeException $e) {
             relay_json(['error' => $e->getMessage()], 400);
         }
-        if ($cal19 !== null && $cal19 === $cal26) {
-            relay_json(['error' => 'Значения АЦП при 19 В и при 26 В должны различаться'], 400);
+        if ($cal6 !== null && $cal6 === $cal15) {
+            relay_json(['error' => 'Значения АЦП при 6 В и при 15 В должны различаться'], 400);
         }
         relay_q($connect, 'INSERT INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -127,7 +127,7 @@ switch ($action) {
                              name_reley_3 = VALUES(name_reley_3), name_reley_4 = VALUES(name_reley_4)',
             [$id, $name, $f('address', 300), $f('coordinates', 100),
              $f('relay1', 60) ?: 'Реле 1', $f('relay2', 60) ?: 'Реле 2', $f('relay3', 60) ?: 'Реле 3', $f('relay4', 60) ?: 'Реле 4']);
-        relay_q($connect, 'UPDATE general_info SET cal_adc_19 = ?, cal_adc_26 = ? WHERE id = ?', [$cal19, $cal26, $id]);
+        relay_q($connect, 'UPDATE general_info SET cal_adc_6 = ?, cal_adc_15 = ? WHERE id = ?', [$cal6, $cal15, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
         relay_event($connect, $id, 'info', 'Изменены название/адрес/подписи реле', 'info', null, $login);
         relay_json(['ok' => true]);
@@ -157,13 +157,13 @@ switch ($action) {
         $name = $f('name', 200) ?: "Устройство $id";
         $address = $f('address', 300);
         try {
-            $cal19 = relay_cal_value($_POST['cal_adc_19'] ?? '');
-            $cal26 = relay_cal_value($_POST['cal_adc_26'] ?? '');
+            $cal6 = relay_cal_value($_POST['cal_adc_6'] ?? '');
+            $cal15 = relay_cal_value($_POST['cal_adc_15'] ?? '');
         } catch (RuntimeException $e) {
             relay_json(['error' => $e->getMessage()], 400);
         }
-        if ($cal19 !== null && $cal19 === $cal26) {
-            relay_json(['error' => 'Значения АЦП при 19 В и при 26 В должны различаться'], 400);
+        if ($cal6 !== null && $cal6 === $cal15) {
+            relay_json(['error' => 'Значения АЦП при 6 В и при 15 В должны различаться'], 400);
         }
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
@@ -178,8 +178,8 @@ switch ($action) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
         relay_q($connect, 'UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  cal_adc_19 = ?, cal_adc_26 = ? WHERE id = ?',
-            [$relays[1], $relays[2], $relays[3], $relays[4], $cal19, $cal26, $id]);
+                                  cal_adc_6 = ?, cal_adc_15 = ? WHERE id = ?',
+            [$relays[1], $relays[2], $relays[3], $relays[4], $cal6, $cal15, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Плата зарегистрирована в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
@@ -207,7 +207,7 @@ switch ($action) {
     case 'battery':
         $id = (int)($_GET['id'] ?? 0);
         $hours = min(24 * 31, max(1, (int)($_GET['hours'] ?? 24)));
-        $cal = mysqli_fetch_assoc(relay_q($connect, 'SELECT cal_adc_19, cal_adc_26 FROM general_info WHERE id = ?', [$id])) ?: [];
+        $cal = mysqli_fetch_assoc(relay_q($connect, 'SELECT cal_adc_6, cal_adc_15 FROM general_info WHERE id = ?', [$id])) ?: [];
         $rows = relay_rows(relay_q($connect,
             "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$.bat_adc') AS UNSIGNED) AS adc
                FROM mqtt_messages
@@ -216,9 +216,9 @@ switch ($action) {
               ORDER BY id", [$id, $hours]));
         $points = [];
         foreach ($rows as $r) {
-            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['cal_adc_19'] ?? null, $cal['cal_adc_26'] ?? null)];
+            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['cal_adc_6'] ?? null, $cal['cal_adc_15'] ?? null)];
         }
-        relay_json(['points' => $points, 'calibrated' => isset($cal['cal_adc_19'], $cal['cal_adc_26']), 'hours' => $hours]);
+        relay_json(['points' => $points, 'calibrated' => isset($cal['cal_adc_6'], $cal['cal_adc_15']), 'hours' => $hours]);
 
     case 'delete':
         $id = (int)($_POST['id'] ?? 0);

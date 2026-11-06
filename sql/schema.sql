@@ -198,3 +198,19 @@ CREATE TABLE IF NOT EXISTS `serial_labels` (
     UNIQUE KEY `uniq_sn` (`sn`),
     INDEX `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.5: калибровка АКБ по точкам 6 В и 15 В (вместо 19 В и 26 В)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `cal_adc_6` INT(11) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `cal_adc_15` INT(11) DEFAULT NULL;
+-- уже введённую калибровку 19/26 В пересчитываем по той же прямой в точки 6/15 В (один раз:
+-- только для плат, у которых новых значений ещё нет); отрицательный результат — калибровку надо ввести заново
+UPDATE `general_info`
+   SET `cal_adc_6`  = NULLIF(GREATEST(-1, ROUND(`cal_adc_19` + (6 - 19)  * (`cal_adc_26` - `cal_adc_19`) / 7)), -1),
+       `cal_adc_15` = NULLIF(GREATEST(-1, ROUND(`cal_adc_19` + (15 - 19) * (`cal_adc_26` - `cal_adc_19`) / 7)), -1)
+ WHERE `cal_adc_6` IS NULL AND `cal_adc_15` IS NULL
+   AND `cal_adc_19` IS NOT NULL AND `cal_adc_26` IS NOT NULL AND `cal_adc_19` <> `cal_adc_26`;
+UPDATE `general_info` SET `cal_adc_6` = NULL WHERE `cal_adc_15` IS NULL;
+UPDATE `general_info` SET `cal_adc_15` = NULL WHERE `cal_adc_6` IS NULL;

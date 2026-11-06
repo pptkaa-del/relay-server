@@ -158,7 +158,7 @@
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_19', 'cal_adc_26']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_6', 'cal_adc_15']) p[k] = F(k).value.trim();
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую плату в брокере…';
     try {

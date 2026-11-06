@@ -206,19 +206,19 @@ function relay_event(mysqli $db, int $deviceId, string $type, string $message, s
 /* Напряжение АКБ                                                      */
 /* ------------------------------------------------------------------ */
 
-const RELAY_BAT_V_LOW  = 19.0; // опорные точки калибровки
-const RELAY_BAT_V_HIGH = 26.0;
+const RELAY_BAT_V_LOW  = 6.0;  // опорные точки калибровки: АЦП при 6 В и при 15 В
+const RELAY_BAT_V_HIGH = 15.0;
 
 /**
- * Пересчёт АЦП в вольты по двум точкам калибровки платы (АЦП при 19 В и при 26 В).
+ * Пересчёт АЦП в вольты по двум точкам калибровки платы (АЦП при 6 В и при 15 В).
  * null — нет данных или калибровки.
  */
-function relay_battery_voltage($adc, $adc19, $adc26): ?float
+function relay_battery_voltage($adc, $adcLow, $adcHigh): ?float
 {
-    if ($adc === null || $adc19 === null || $adc26 === null || (int)$adc19 === (int)$adc26) {
+    if ($adc === null || $adcLow === null || $adcHigh === null || (int)$adcLow === (int)$adcHigh) {
         return null;
     }
-    $v = RELAY_BAT_V_LOW + ((int)$adc - (int)$adc19) * (RELAY_BAT_V_HIGH - RELAY_BAT_V_LOW) / ((int)$adc26 - (int)$adc19);
+    $v = RELAY_BAT_V_LOW + ((int)$adc - (int)$adcLow) * (RELAY_BAT_V_HIGH - RELAY_BAT_V_LOW) / ((int)$adcHigh - (int)$adcLow);
     return round(max(0.0, $v), 2);
 }
 
