@@ -218,7 +218,7 @@
   const addParam = new URLSearchParams(location.search).get('add');
   if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
 
-  /* ---------- Массовое изменение названий реле ---------- */
+  /* ---------- Массовое изменение устройств: названия реле, реле 4 — замок ---------- */
   const bulkDlg = $('#bulk'), bulkForm = $('#bulk-form');
   /** «1, 3, 5-10» → [1, 3, 5, …, 10] или строка ошибки (как relay_parse_id_list на сервере) */
   function parseIds(s) {
@@ -254,13 +254,14 @@
     e.preventDefault();
     const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
+    p.relay4_lock = bulkForm.elements.relay4_lock.value;
     const res = $('#bulk-result'), btn = $('#bulk-submit');
     btn.disabled = true;
     try {
       const j = await api('/api/devices.php', p, true);
       res.className = 'result ok';
       res.textContent = `Изменено устройств: ${j.updated.length}` + (j.missing.length ? `. Нет в панели: ${j.missing.join(', ')}` : '');
-      toast(`Названия реле изменены у ${j.updated.length} устр.`, 'ok');
+      toast(`Изменено устройств: ${j.updated.length}`, 'ok');
       load().catch(() => {});
     } catch (er) { res.className = 'result err'; res.textContent = er.message; }
     finally { btn.disabled = false; }

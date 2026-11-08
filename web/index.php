@@ -10,7 +10,7 @@ layout_head('Устройства', 'devices', $login);
     <p id="lastmsg">Загрузка…</p>
   </div>
   <div class="btn-row">
-    <button class="btn" id="b-bulk" title="Задать названия реле сразу нескольким устройствам"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Названия реле…</button>
+    <button class="btn" id="b-bulk" title="Изменить сразу несколько устройств: названия реле, реле 4 — замок двери"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Массовое изменение устройств</button>
     <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить устройство</button>
   </div>
 </div>
@@ -118,7 +118,7 @@ layout_head('Устройства', 'devices', $login);
 
 <dialog class="modal" id="bulk">
   <form method="dialog" id="bulk-form">
-    <div class="modal-head"><h2>Названия реле для нескольких устройств</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-head"><h2>Массовое изменение устройств</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
     <div class="modal-body">
       <div class="form-grid">
         <label class="field full">Номера устройств<input class="input mono" name="ids" required autocomplete="off" placeholder="например: 1, 3, 5-10">
@@ -129,6 +129,10 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="не менять"></label>
         <p class="hint full" style="margin:0">Пустое поле — название этого реле не меняется.</p>
+        <label class="field full">Реле 4 — замок двери<select class="input" name="relay4_lock">
+          <option value="">не менять</option>
+          <option value="1">включить: реле 4 управляет замком (вкл — дверь закрыта, выкл — открыта)</option>
+          <option value="0">выключить: реле 4 — обычное реле</option></select></label>
       </div>
       <div class="result" id="bulk-result"></div>
     </div>

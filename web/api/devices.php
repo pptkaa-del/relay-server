@@ -11,7 +11,8 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
- *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4 — массово задать названия реле (пустое — не менять)
+ *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — массовое изменение устройств:
+ *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять)
  *   POST action=ack_break_in id       — сбросить тревогу «взлом двери» (администратор или управляющий замком)
  *
  * Администратор видит всё. Пользователь — только выданные ему реле (panel_user_relays): list/get/battery
@@ -325,8 +326,14 @@ switch ($action) {
                 $names[] = "реле $i — «{$v}»";
             }
         }
+        $lockMode = (string)($_POST['relay4_lock'] ?? '');
+        if ($lockMode === '1' || $lockMode === '0') {
+            $set[] = 'relay4_lock = ?';
+            $params[] = (int)$lockMode;
+            $names[] = $lockMode === '1' ? 'реле 4 — замок двери' : 'реле 4 — обычное реле';
+        }
         if (!$set) {
-            relay_json(['error' => 'Введите название хотя бы одного реле'], 400);
+            relay_json(['error' => 'Укажите, что изменить: название реле или «Реле 4 — замок двери»'], 400);
         }
         $updated = $missing = [];
         foreach ($ids as $id) {
@@ -336,7 +343,7 @@ switch ($action) {
                 continue;
             }
             relay_q($connect, 'UPDATE general_info SET ' . implode(', ', $set) . ' WHERE id = ?', [...$params, $id]);
-            relay_event($connect, $id, 'info', 'Массовое изменение названий: ' . implode(', ', $names), 'info', null, $login);
+            relay_event($connect, $id, 'info', 'Массовое изменение: ' . implode(', ', $names), 'info', null, $login);
             $updated[] = $id;
         }
         relay_json(['ok' => true, 'updated' => $updated, 'missing' => $missing]);
