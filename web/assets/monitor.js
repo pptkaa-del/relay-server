@@ -2,6 +2,7 @@
 'use strict';
 (() => {
   const { $, $$, esc, api, ago, fmtTime, ICONS, toast, describe, cmdLabel, sendCommand } = App;
+  let cap = App.logLimit(); // сколько последних сообщений показывать
   let brokers = [], broker = 1, devices = [], lastId = 0, oldestId = 0, selected = 0;
 
   try { broker = +localStorage.getItem('relay-broker') || 1; } catch (e) {}
@@ -137,7 +138,7 @@
 
   /* ---------- Сообщения ---------- */
   function rowHtml(m, isNew) {
-    return `<tr class="${isNew ? 'flash' : ''}">
+    return `<tr class="${isNew ? 'flash' : ''}" data-id="${m.id}">
       <td data-c="time" class="mono nowrap">${esc(m.ts.slice(5, 23))}</td>
       <td data-c="dir"><span class="dir ${m.direction}">${ICONS[m.direction]}${m.direction === 'in' ? 'вход' : 'выход'}</span></td>
       <td data-c="topic" class="mono">${esc(m.topic)}${m.retained ? ' <span class="tag">retain</span>' : ''}</td>
@@ -151,26 +152,32 @@
     return p;
   }
   async function loadMessages(reset) {
-    if (reset) { lastId = 0; oldestId = 0; $('#log').innerHTML = ''; }
-    const p = filterParams(); if (lastId) p.after = lastId;
+    if (reset) { lastId = 0; oldestId = 0; cap = App.logLimit(); $('#log').innerHTML = ''; }
+    const p = filterParams(); if (lastId) p.after = lastId; else p.limit = cap;
     const j = await api('/api/monitor.php', p);
     if (j.messages.length) {
       lastId = Math.max(lastId, j.messages[0].id);
       if (!oldestId) oldestId = j.messages[j.messages.length - 1].id;
       $('#log').insertAdjacentHTML('afterbegin', j.messages.map(m => rowHtml(m, !reset)).join(''));
-      const rows = $('#log').rows; while (rows.length > 1000) rows[rows.length - 1].remove();
+      // показываем только последние cap сообщений (выбор «Показывать»; «Показать ещё» увеличивает)
+      const rows = $('#log').rows; let trimmed = false;
+      while (rows.length > cap) { rows[rows.length - 1].remove(); trimmed = true; }
+      if (trimmed) { oldestId = +($('#log').rows[$('#log').rows.length - 1]?.dataset.id || oldestId); $('#more').classList.remove('hidden'); }
     }
-    if (reset) $('#more').classList.toggle('hidden', j.messages.length < 200);
+    if (reset) $('#more').classList.toggle('hidden', j.messages.length < cap);
     $('#logempty').style.display = $('#log').rows.length ? 'none' : '';
     // статус брокера обновляется вместе с журналом
     const b = cur(); if (b && j.broker) { b.status = j.broker.status; b.last_error = j.broker.last_error; renderBrokerInfo(); }
   }
   $('#more button').addEventListener('click', async () => {
-    const p = filterParams(); p.before = oldestId;
+    const step = App.logLimit();
+    const p = filterParams(); p.before = oldestId; p.limit = step;
     const j = await api('/api/monitor.php', p);
     if (j.messages.length) { oldestId = j.messages[j.messages.length - 1].id; $('#log').insertAdjacentHTML('beforeend', j.messages.map(m => rowHtml(m, false)).join('')); }
-    $('#more').classList.toggle('hidden', j.messages.length < 200);
+    cap = $('#log').rows.length;
+    $('#more').classList.toggle('hidden', j.messages.length < step);
   });
+  App.bindLogLimit(n => { cap = n; loadMessages(true); });
   $('#log').addEventListener('click', e => {
     const b = e.target.closest('[data-reply]'); if (!b) return;
     const id = +b.dataset.reply;

@@ -81,6 +81,7 @@ layout_head('Монитор', 'monitor', $login);
         <input class="input" id="f-topic" placeholder="фильтр топика: stat, com/*" style="width:190px">
         <label class="check"><input type="checkbox" id="f-hex"> HEX</label>
         <label class="check"><input type="checkbox" id="f-pause"> пауза</label>
+        <label class="check log-limit">Показывать<select class="input" data-log-limit><option>20</option><option>50</option><option>100</option><option>200</option><option>500</option></select></label>
       </div>
       <div class="log-wrap" id="logwrap">
         <table class="tbl cards"><thead><tr><th>Время</th><th></th><th>Топик</th><th>Данные</th><th></th></tr></thead><tbody id="log"></tbody></table>

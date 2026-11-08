@@ -40,6 +40,7 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field">По дату<input class="input" type="date" id="f-to"></label>
         <button class="btn" id="f-apply">Показать</button>
         <span style="flex:1"></span>
+        <label class="check log-limit">Показывать<select class="input" data-log-limit><option>20</option><option>50</option><option>100</option><option>200</option><option>500</option></select></label>
         <label class="check hidden" id="hexwrap"><input type="checkbox" id="f-hex"> HEX</label>
         <a class="btn" id="f-csv" href="#"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>CSV</a>
       </div>

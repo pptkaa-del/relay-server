@@ -31,13 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вход · Relay Control</title>
+<title>Вход · off-on service</title>
 <link rel="stylesheet" href="<?= h(asset_url('app.css')) ?>">
 </head>
 <body>
 <div class="auth">
   <div class="card auth-card">
-    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M5 12h3l2-5 4 10 2-5h3"/></svg></span><span>Relay Control</span></div>
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M5 12h3l2-5 4 10 2-5h3"/></svg></span><span>off-on service</span></div>
     <p class="sub">Сервер управления релейными устройствами</p>
     <form method="POST" action="/login.php">
       <?php if ($error): ?><div class="alert"><?= h($error) ?></div><?php endif; ?>

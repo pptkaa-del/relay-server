@@ -48,7 +48,7 @@
 
   function render() {
     const d = dev;
-    document.title = `${d.name} · Relay Control`;
+    document.title = `${d.name} · off-on service`;
     $('#d-name').textContent = d.name;
     $('#d-addr').textContent = d.address || 'Адрес не указан';
     $('#d-badge').innerHTML = stateBadge(d.state) + (d.break_in ? ' <span class="badge breakin">ВЗЛОМ ДВЕРИ</span>' : '');
@@ -183,6 +183,7 @@
   async function loadLog(reset) {
     if (reset) { lastId = 0; paged = false; } else paged = true;
     const p = logParams(); if (lastId) p.before = lastId;
+    p.limit = App.logLimit(); // последние 20 (или выбранное «Показывать»), «Показать ещё» — следующие столько же
     $('#f-csv').href = '/api/device_log.php?' + new URLSearchParams({ ...logParams(), format: 'csv' });
     $('#hexwrap').classList.toggle('hidden', kind !== 'messages');
     let j;
@@ -225,6 +226,7 @@
     kind = b.dataset.k; $$('#tabs button').forEach(x => x.classList.toggle('on', x === b)); loadLog(true);
   });
   $('#f-apply').addEventListener('click', () => loadLog(true));
+  App.bindLogLimit(() => loadLog(true));
   $('#more button').addEventListener('click', () => loadLog(false));
   $('#f-hex').addEventListener('change', e => $('#log').classList.toggle('show-hex', e.target.checked));
 

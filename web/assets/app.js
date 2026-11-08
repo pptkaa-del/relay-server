@@ -1,4 +1,4 @@
-/* Relay Control — общие функции интерфейса */
+/* off-on service — общие функции интерфейса */
 'use strict';
 
 const App = (() => {
@@ -226,5 +226,22 @@ const App = (() => {
     upd();
   }
 
-  return { bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /** Сколько последних записей журналов показывать (по умолчанию 20; выбор запоминается в браузере) */
+  const LOG_LIMITS = [20, 50, 100, 200, 500];
+  function logLimit() {
+    let n = 20;
+    try { n = +localStorage.getItem('relay-log-limit') || 20; } catch (e) {}
+    return LOG_LIMITS.includes(n) ? n : 20;
+  }
+  function bindLogLimit(onChange) {
+    document.querySelectorAll('[data-log-limit]').forEach(sel => {
+      sel.value = String(logLimit());
+      sel.addEventListener('change', () => {
+        try { localStorage.setItem('relay-log-limit', sel.value); } catch (e) {}
+        onChange(+sel.value);
+      });
+    });
+  }
+
+  return { logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

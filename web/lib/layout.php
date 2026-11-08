@@ -23,7 +23,7 @@ function layout_head(string $title, string $active, string $login): void
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
 <meta name="server-tz-offset" content="<?= (int)(date('Z') / 60) ?>">
-<title><?= h($title) ?> · Relay Control</title>
+<title><?= h($title) ?> · off-on service</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%232563eb'/><path d='M7 12h3l2-4 2 8 2-4h1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <link rel="stylesheet" href="<?= h(asset_url('app.css')) ?>">
 </head>
@@ -31,7 +31,7 @@ function layout_head(string $title, string $active, string $login): void
 <header class="topbar">
   <a class="brand" href="/index.php">
     <span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M5 12h3l2-5 4 10 2-5h3"/></svg></span>
-    <span class="brand-name">Relay Control</span>
+    <span class="brand-name">off-on service</span>
   </a>
   <nav class="nav">
     <?php foreach ($nav as $key => [$href, $label, $icon]): ?>
