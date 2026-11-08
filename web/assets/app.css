@@ -508,3 +508,12 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
 .sim-relay:disabled { opacity: .6; cursor: progress; }
 @media (max-width: 760px) { #sim-form .field.grow { flex-basis: 100%; } #sim-form .field select.input { min-width: 0 !important; } }
 .log-limit select.input { width: auto; height: 30px; padding: 0 6px; font-size: 12.5px; margin-left: 6px; }
+/* карта справа вместо сводки реле (устройство не выбрано) */
+.split-main .map-card { margin-bottom: 0; }
+.split-main .map { height: max(420px, calc(100vh - 250px)); }
+@media (max-width: 1100px) {
+  .split:not(.has-sel) .split-side { display: block; order: 2; }  /* на узком экране — список под картой */
+  .split .split-main { order: 1; }
+  .split-side { position: static; }
+  .split-main .map { height: 60vh; min-height: 320px; }
+}

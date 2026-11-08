@@ -67,34 +67,6 @@
   }
 
   // без выбора: все реле всех плат
-  function overviewHtml(list) {
-    const relays = list.reduce((n, d) => n + d.relays.length, 0);
-    const on = list.reduce((n, d) => n + d.relays.filter(r => r.state === 1).length, 0);
-    const rows = list.map(d => {
-      const dis = !canSend(d);
-      return `<tr class="ov-grp"><td colspan="4"><div class="ov-head">
-          <button class="ov-dev" data-sel="${d.id}" title="Открыть устройство"><span class="dot ${d.state}"></span><b>${esc(d.name)}</b></button>
-          ${stateBadge(d.state)}${breakBadge(d)}${d.can_ack && d.break_in ? `<button class="btn sm" data-ack="${d.id}">Сбросить тревогу</button>` : ''}<span class="dev-meta ov-meta">${metaHtml(d)}</span></div></td></tr>`
-        + d.relays.map(r => {
-          const key = d.id + ':' + r.num, cls = r.state === 1 ? 'on' : r.state === 2 ? 'err' : '';
-          const ctl = !r.control ? viewOnly
-            : r.lock ? `<span class="btn-row nowrap"><button class="btn sm primary" data-id="${d.id}" data-c="3" data-r="4" ${dis || busy.has(key) ? 'disabled' : ''}>Открыть</button>
-                <button class="btn sm" data-id="${d.id}" data-c="1" data-r="4" ${dis || busy.has(key) ? 'disabled' : ''}>Закрыть</button></span>`
-            : `<button class="switch ${cls} ${busy.has(key) ? 'busy' : ''}" data-id="${d.id}" data-relay="${r.num}" data-state="${r.state ?? ''}" ${dis ? 'disabled' : ''}
-              aria-label="${esc(r.name)}" title="${dis ? 'Устройство ещё не выходило на связь' : d.online ? (r.state === 1 ? 'Выключить' : 'Включить') : 'Устройство не на связи — команда выполнится при подключении'}"></button>`;
-          return `<tr class="ov-relay"><td><span class="ov-rname" title="${esc(r.name)}">${esc(r.name)}</span> <span class="muted ov-rnum">${r.lock ? 'замок · ' : ''}реле ${r.num}</span></td>
-            <td>${relayBadge(r.state, r.lock)}</td>
-            <td class="ov-ts muted">${r.ts ? fmtTime(r.ts) : '—'}</td>
-            <td class="ov-sw">${ctl}</td></tr>`;
-        }).join('');
-    }).join('');
-    return `<section class="card">
-      <div class="card-head"><h2>Все реле</h2><span class="muted">${list.length} ${plural(list.length, 'устройство', 'устройства', 'устройств')} · ${relays} реле · включено ${on}</span></div>
-      <div class="table-wrap"><table class="tbl ov">
-        <thead><tr><th>Реле</th><th>Состояние</th><th class="ov-ts">Изменено</th><th class="ov-sw">Вкл / выкл</th></tr></thead>
-        <tbody>${rows}</tbody></table></div></section>`;
-  }
-
   // выбрана плата: её реле и краткие сведения
   function panelHtml(d) {
     const dis = !canSend(d) ? 'disabled' : '';
@@ -125,7 +97,7 @@
     const note = d.state === 'never' ? 'Устройство ещё не выходило на связь.' : !d.online ? 'Устройство не на связи: команды выполнятся при подключении.' : '';
     return `<section class="card dev-panel state-${d.state}">
       <div class="card-head">
-        <button class="btn sm ghost only-narrow" data-sel="0">← Все устройства</button>
+        <button class="btn sm ghost" data-sel="0" title="Вернуться к карте">← Карта</button>
         <div class="dev-panel-title"><h2><a href="/device.php?id=${d.id}">${esc(d.name)}</a></h2><div class="muted">${esc(d.address || 'адрес не указан')}</div></div>
         ${stateBadge(d.state)}
       </div>
@@ -150,6 +122,8 @@
     document.dispatchEvent(new CustomEvent('relay:devices', { detail: { list, selected } }));
     const sel = selected ? devices.find(d => d.id === selected) : null;
     $('#split').classList.toggle('has-sel', !!sel);
+    // карта — когда устройство не выбрано и устройства есть
+    $('#map-card').classList.toggle('hidden', !!sel || !devices.length || (selected && !sel));
     $('.side-all').classList.toggle('sel', !sel);
     $('#side-count').textContent = devices.length;
     $('#side').innerHTML = list.length ? list.map(sideHtml).join('')
@@ -164,7 +138,7 @@
     } else if (sel) {
       panel.innerHTML = panelHtml(sel);
     } else {
-      panel.innerHTML = list.length ? overviewHtml(list) : '<div class="card empty">Нет устройств по выбранному фильтру</div>';
+      panel.innerHTML = ''; // без выбора справа карта (map.js)
     }
   }
 

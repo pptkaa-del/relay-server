@@ -26,23 +26,6 @@ layout_head('Устройства', 'devices', $login);
 </section>
 
 <link rel="stylesheet" href="<?= h(asset_url('leaflet/leaflet.css')) ?>">
-<section class="card map-card" id="map-card">
-  <div class="card-head">
-    <h2>Карта</h2>
-    <div class="map-legend">
-      <span><i class="pin c-green"></i>на связи</span>
-      <span><i class="pin c-red"></i>нет данных</span>
-      <span><i class="pin c-yellow"></i>на связи, все реле выключены</span>
-      <span><i class="pin c-blue"></i>дверь открыта</span>
-      <span><i class="pin c-purple"></i>взлом двери</span>
-    </div>
-    <button class="btn sm ghost" id="map-toggle" aria-expanded="true">Скрыть</button>
-  </div>
-  <div class="map-wrap" id="map-wrap">
-    <div id="map" class="map"></div>
-    <div class="map-note" id="map-note"></div>
-  </div>
-</section>
 
 <div class="toolbar">
   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -57,11 +40,29 @@ layout_head('Устройства', 'devices', $login);
   <aside class="card split-side">
     <button class="side-item side-all sel" data-sel="0">
       <div class="side-item-top"><span class="side-item-name">Все устройства</span><span class="badge" id="side-count">—</span></div>
-      <div class="side-item-meta">сводка по всем реле</div>
+      <div class="side-item-meta">карта</div>
     </button>
     <div class="side-list" id="side"></div>
   </aside>
-  <div class="split-main" id="panel"><div class="card empty">Загрузка…</div></div>
+  <div class="split-main">
+    <section class="card map-card" id="map-card">
+      <div class="card-head">
+        <h2>Карта</h2>
+        <div class="map-legend">
+          <span><i class="pin c-green"></i>на связи</span>
+          <span><i class="pin c-red"></i>нет данных</span>
+          <span><i class="pin c-yellow"></i>все реле выключены</span>
+          <span><i class="pin c-blue"></i>дверь открыта</span>
+          <span><i class="pin c-purple"></i>взлом двери</span>
+        </div>
+      </div>
+      <div class="map-wrap" id="map-wrap">
+        <div id="map" class="map"></div>
+        <div class="map-note" id="map-note"></div>
+      </div>
+    </section>
+    <div id="panel"></div>
+  </div>
 </div>
 
 <dialog class="modal" id="add">

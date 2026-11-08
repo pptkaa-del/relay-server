@@ -22,7 +22,7 @@
     return ['green', d.relay4_lock && d.door_open === false ? 'на связи, дверь закрыта' : 'на связи'];
   }
 
-  let map = null, layer = null, fitted = false, lastSel = 0;
+  let map = null, layer = null, fitted = false, lastSel = 0, shown = false;
   const markers = new Map(); // id → marker
 
   function ensureMap() {
@@ -57,8 +57,9 @@
       ? 'Ни у одного устройства не указаны координаты. Администратор задаёт их в «Изменить» → «Координаты», например 55.7558, 37.6173.'
       : without ? `Без координат: ${without} — они не показаны на карте.` : '';
     $('#map').classList.toggle('hidden', !geo.length);
-    if (!geo.length || card.classList.contains('collapsed')) return;
+    if (!geo.length || card.classList.contains('hidden')) { shown = false; return; }
     ensureMap();
+    if (!shown) { shown = true; setTimeout(() => map.invalidateSize(), 0); } // карта снова видна (вернулись из устройства)
 
     const seen = new Set();
     for (const d of geo) {
@@ -93,20 +94,6 @@
     lastSel = selected;
   }
 
-  let last = { list: [], selected: 0 };
-  document.addEventListener('relay:devices', e => { last = e.detail; update(last.list, last.selected); });
+  document.addEventListener('relay:devices', e => update(e.detail.list, e.detail.selected));
 
-  // свернуть / развернуть (запоминается в браузере)
-  const setCollapsed = c => {
-    card.classList.toggle('collapsed', c);
-    $('#map-toggle').textContent = c ? 'Показать' : 'Скрыть';
-    $('#map-toggle').setAttribute('aria-expanded', String(!c));
-    if (!c) { update(last.list, last.selected); if (map) setTimeout(() => map.invalidateSize(), 50); }
-  };
-  try { if (localStorage.getItem('relay-map-collapsed') === '1') setCollapsed(true); } catch (e) {}
-  $('#map-toggle').addEventListener('click', () => {
-    const c = !card.classList.contains('collapsed');
-    setCollapsed(c);
-    try { localStorage.setItem('relay-map-collapsed', c ? '1' : '0'); } catch (e) {}
-  });
 })();
