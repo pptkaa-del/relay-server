@@ -205,13 +205,7 @@ function handleStat(array $d, bool $retained): void
         checkBreakIn($c, $id, 'relay4');
     }
 
-    // Авария «питание от АКБ»
-    $wasAlarm = (int)$current['battery_power'];
-    if ($alarm !== $wasAlarm) {
-        $alarm === 1
-            ? relay_event($c, $id, 'alarm', 'Авария: питание от АКБ', 'error')
-            : relay_event($c, $id, 'alarm_clear', 'Основное питание восстановлено', 'success');
-    }
+    // признак «питание от АКБ» (поле alarm) сохраняется в devices.battery_power, но событий и оповещений не создаёт
 
     // Связь
     $newConn = $stat === 0 ? 'offline' : 'online';
@@ -485,10 +479,211 @@ function forwardMessage(int $srcId, string $topic, string $message, bool $retain
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Симуляция устройств (таблица mqtt_simulations, Монитор → «Симуляция»): */
+/* сервер публикует stat от имени устройства и отвечает на com/{id}     */
+/* так же, как настоящая плата (прошивка v2.3 / ver_5_1)                */
+/* ------------------------------------------------------------------ */
+
+/** @var array<string, array> "брокер|устройство" → состояние симуляции */
+$sims = [];
+
+function simKey(int $broker, int $device): string
+{
+    return "$broker|$device";
+}
+
+/** Читает симуляции из БД: новые запускает, удалённые останавливает, изменённые в панели (dirty) — публикует. */
+function syncSims(): void
+{
+    global $sims;
+    $res = @mysqli_query(db(), 'SELECT s.* FROM mqtt_simulations s JOIN mqtt_brokers b ON b.id = s.broker_id WHERE b.enabled = 1');
+    $seen = [];
+    foreach (relay_rows($res ?: null) as $row) {
+        $k = simKey((int)$row['broker_id'], (int)$row['device_id']);
+        $seen[$k] = true;
+        $fromDb = [
+            'row_id' => (int)$row['id'], 'broker' => (int)$row['broker_id'], 'device' => (int)$row['device_id'],
+            'version' => (int)$row['version'] === 3 ? 3 : 2, 'interval' => max(5, (int)$row['interval_sec']),
+            'sl' => (int)$row['signal_level'], 'bat' => (int)$row['bat_adc'],
+        ];
+        $relays = array_map('intval', explode(',', $row['relays'] . ',0,0,0,0'));
+        if (!isset($sims[$k])) {
+            $sims[$k] = $fromDb + ['relays' => array_slice($relays, 0, 4), 'lock' => (int)$row['lock_state'], 'door' => (int)$row['door_state'],
+                                   'next_stat' => 0.0, 'reboot_until' => 0.0, 'restart' => [], 'last_cmd_id' => null];
+            writeLog("симуляция: запущено устройство {$fromDb['device']} (брокер #{$fromDb['broker']})");
+            if ((int)$row['dirty']) {
+                relay_q(db(), 'UPDATE mqtt_simulations SET dirty = 0 WHERE id = ?', [$fromDb['row_id']]);
+            }
+            continue;
+        }
+        $sims[$k] = $fromDb + $sims[$k];
+        if ((int)$row['dirty']) { // реле или дверь переключены вручную в панели — «как будто на месте»
+            $sims[$k]['relays'] = array_slice($relays, 0, 4);
+            $sims[$k]['lock'] = (int)$row['lock_state'];
+            $sims[$k]['door'] = (int)$row['door_state'];
+            $sims[$k]['next_stat'] = 0.0;
+            relay_q(db(), 'UPDATE mqtt_simulations SET dirty = 0 WHERE id = ?', [$fromDb['row_id']]);
+        }
+    }
+    foreach (array_keys($sims) as $k) {
+        if (!isset($seen[$k])) {
+            writeLog("симуляция: остановлено устройство {$sims[$k]['device']}");
+            unset($sims[$k]);
+        }
+    }
+}
+
+/** Брокеру с симуляцией нужна подписка на команды com/+ */
+function simFilters(int $brokerId): array
+{
+    global $sims;
+    foreach ($sims as $s) {
+        if ($s['broker'] === $brokerId) {
+            return ['com/+'];
+        }
+    }
+    return [];
+}
+
+function simPublish(array $sim, string $topic, string $payload, bool $retain): bool
+{
+    global $conns;
+    $client = $conns[$sim['broker']]['client'] ?? null;
+    if ($client === null) {
+        return false;
+    }
+    try {
+        $client->publish($topic, $payload, 1, $retain);
+        return true;
+    } catch (Throwable $e) {
+        writeLog("симуляция {$sim['device']}: " . $e->getMessage(), 'ERROR');
+        return false;
+    }
+}
+
+function simStat(string $k): void
+{
+    global $sims;
+    $s = &$sims[$k];
+    // небольшие колебания сигнала и АЦП АКБ, как у живой платы
+    $sl = max(5, min(31, $s['sl'] + random_int(-2, 2)));
+    $bat = max(0, $s['bat'] + random_int(-3, 3));
+    $p = pack('V*', $s['device'], $s['version'], ...$s['relays']) . pack('V*', 1, $sl, 0, $bat);
+    if ($s['version'] === 3) {
+        $p .= pack('V*', $s['lock'], $s['door']);
+    }
+    if (simPublish($s, 'stat', $p, true)) {
+        relay_q(db(), 'UPDATE mqtt_simulations SET stat_count = stat_count + 1, last_stat_at = NOW() WHERE id = ?', [$s['row_id']]);
+        $s['next_stat'] = microtime(true) + $s['interval'];
+    } else {
+        $s['next_stat'] = microtime(true) + 3; // брокер ещё не подключён — повторим
+    }
+    unset($s);
+}
+
+function simSave(string $k, string $label): void
+{
+    global $sims;
+    $s = $sims[$k];
+    relay_q(db(), 'UPDATE mqtt_simulations SET relays = ?, lock_state = ?, door_state = ?, cmd_count = cmd_count + 1, last_cmd_at = NOW(), last_cmd = ?
+                    WHERE id = ? AND dirty = 0', [implode(',', $s['relays']), $s['lock'], $s['door'], mb_substr($label, 0, 120), $s['row_id']]);
+}
+
+/** Команда com/{id} симулируемому устройству: выполнить, ответить rep, опубликовать stat. true — команда для симуляции. */
+function simCommand(int $brokerId, string $topic, string $message, bool $retained): bool
+{
+    global $sims;
+    if (!preg_match('~^com/(\d+)$~', $topic, $m) || strlen($message) !== 12) {
+        return false;
+    }
+    $k = simKey($brokerId, (int)$m[1]);
+    if (!isset($sims[$k])) {
+        return false;
+    }
+    $s = &$sims[$k];
+    $cmdId = unpack('V', substr($message, 0, 4))[1];
+    $cmd = unpack('V', substr($message, 4, 4))[1];
+    $relay = unpack('V', substr($message, 8, 4))[1];
+    $now = microtime(true);
+    if ($now < $s['reboot_until'] || $cmdId === $s['last_cmd_id']) {
+        unset($s);
+        return true; // перезагружается или повтор той же команды
+    }
+    // как прошивка: retained-команды 3/5 и команды замку после подписки не выполняются
+    if ($retained && ($cmd === 3 || $cmd === 5 || $relay === RELAY_LOCK)) {
+        unset($s);
+        return true;
+    }
+    $s['last_cmd_id'] = $cmdId;
+    $ok = true;
+    $targets = $relay === 0 ? [1, 2, 3, 4] : [$relay];
+    if (in_array($cmd, [1, 2, 3], true) && $relay === RELAY_LOCK) {
+        if ($s['version'] !== 3) {
+            $ok = false; // у платы v2 замка нет
+        } elseif ($cmd !== 3) {
+            $s['lock'] = $cmd === 1 ? 1 : 0;
+        }
+    } elseif (in_array($cmd, [1, 2], true) && $relay <= 4) {
+        foreach ($targets as $i) {
+            $s['relays'][$i - 1] = $cmd === 1 ? 1 : 0;
+        }
+    } elseif ($cmd === 3 && $relay <= 4) {
+        foreach ($targets as $i) { // выкл → через 1 с вкл
+            $s['relays'][$i - 1] = 0;
+            $s['restart'][$i] = $now + 1.0;
+        }
+    } elseif ($cmd === 5) {
+        $s['reboot_until'] = $now + 15; // плата перезагружается ~15 с и снова публикует stat
+    } elseif ($cmd !== 4) {
+        $ok = false;
+    }
+    simPublish($s, 'rep', pack('VVV', $s['device'], $cmdId, $ok ? 1 : 2), false);
+    $label = relay_command_label($cmd, $relay) . ($ok ? '' : ' — отклонена');
+    unset($s);
+    simSave($k, $label);
+    writeLog("симуляция {$sims[$k]['device']}: $label (cmd_id=$cmdId)");
+    if ($cmd !== 5) {
+        simStat($k);
+    }
+    return true;
+}
+
+/** Таймеры симуляций: периодический stat, окончание перезапуска реле и перезагрузки. */
+function simTick(): void
+{
+    global $sims;
+    $now = microtime(true);
+    foreach (array_keys($sims) as $k) {
+        $s = &$sims[$k];
+        if ($s['reboot_until'] > 0 && $now >= $s['reboot_until']) {
+            $s['reboot_until'] = 0.0;
+            $s['next_stat'] = 0.0;
+        }
+        $changed = false;
+        foreach ($s['restart'] as $i => $at) {
+            if ($now >= $at) {
+                $s['relays'][$i - 1] = 1;
+                unset($s['restart'][$i]);
+                $changed = true;
+            }
+        }
+        $due = $s['reboot_until'] === 0.0 && ($changed || $now >= $s['next_stat']);
+        unset($s);
+        if ($changed) {
+            simSave($k, 'перезапуск реле завершён');
+        }
+        if ($due) {
+            simStat($k);
+        }
+    }
+}
+
 function syncBrokers(): void
 {
     global $conns;
     syncForwards();
+    syncSims();
     $rows = relay_rows(relay_q(db(), 'SELECT * FROM mqtt_brokers'));
     $seen = [];
     foreach ($rows as $b) {
@@ -496,7 +691,8 @@ function syncBrokers(): void
         $seen[$id] = true;
         // при изменении фильтров переадресации брокер переподключается с новыми подписками
         $hash = md5(json_encode([$b['host'], $b['port'], $b['use_tls'], $b['tls_verify'], $b['username'], $b['password'], $b['topics'], $b['enabled'],
-                                 forwardFilters($id)]));
+                                 // итоговые подписки: если «#» уже есть, фильтры переадресации и симуляции переподключения не требуют
+                                 relay_merge_filters(array_merge(relay_parse_topics((string)$b['topics'] ?: '#')[0], forwardFilters($id), simFilters($id)))]));
         if (!(int)$b['enabled']) {
             if (isset($conns[$id])) {
                 disconnectBroker($id);
@@ -548,7 +744,7 @@ function connectBroker(int $id): void
         }
         // свои подписки брокера (журнал и обработка) + фильтры переадресации (только пересылка)
         $own = $topics;
-        $topics = relay_merge_filters(array_merge($topics, forwardFilters($id)));
+        $topics = relay_merge_filters(array_merge($topics, forwardFilters($id), simFilters($id)));
         foreach ($topics as $t) {
             $client->subscribe($t, function ($topic, $message, $retained) use ($id, $t, $own) {
                 global $conns;
@@ -556,6 +752,11 @@ function connectBroker(int $id): void
                 // служебное сообщение пришло бы дважды: $SYS принимаем только от подписки на $SYS
                 if (str_starts_with($topic, '$') !== str_starts_with($t, '$')) {
                     return;
+                }
+                try { // команда симулируемому устройству: ответить как плата (и дальше — обычная обработка)
+                    simCommand($id, $topic, $message, (bool)$retained);
+                } catch (Throwable $e) {
+                    writeLog('симуляция: ' . $e->getMessage(), 'ERROR');
                 }
                 foreach ($own as $o) {
                     if (relay_topic_match($o, $topic)) {
@@ -602,15 +803,19 @@ if (function_exists('pcntl_async_signals')) {
     pcntl_signal(SIGINT, function () use (&$stop) { $stop = true; });
 }
 
-$lastSync = $lastTimeout = $lastCleanup = 0.0;
+$lastSync = $lastTimeout = $lastCleanup = $lastSims = 0.0;
 $started = microtime(true);
 while (!$stop) {
     $now = microtime(true);
     try {
         if ($now - $lastSync >= 10) {
             syncBrokers();
-            $lastSync = $now;
+            $lastSync = $lastSims = $now;
+        } elseif ($now - $lastSims >= 2) {
+            syncSims(); // симуляции подхватываются быстрее, чем настройки брокеров
+            $lastSims = $now;
         }
+        simTick();
         foreach (array_keys($conns) as $id) {
             if ($conns[$id]['client'] === null) {
                 if ($now >= $conns[$id]['retry_at']) {

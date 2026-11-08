@@ -98,7 +98,6 @@
       <dt>Топик команд</dt><dd class="mono">com/${d.id}</dd>
       <dt>Связь</dt><dd>${stateBadge(d.state)}</dd>
       <dt>Сигнал GSM</dt><dd>${signalBars(d.signal_level)} <span class="muted">${d.signal_level ?? '—'}/31</span></dd>
-      <dt>Питание</dt><dd>${d.alarm === 1 ? '<span class="badge alarm">от АКБ</span>' : d.registered ? 'основное' : '—'}</dd>
       <dt>АКБ</dt><dd>${App.batteryHtml(d) || '—'}</dd>
       <dt>Протокол</dt><dd>${d.version ? 'v' + d.version : '—'}</dd>
       <dt>Последняя команда</dt><dd>${lc ? esc(cmdLabel(+lc.command, +lc.relay_num, d.relay4_lock)) + ' ' + (+lc.relay_num === 4 && d.relay4_lock ? '' : App.cmdStatusBadge(lc.status)) + `<div class="muted">${esc(lc.created_at)}</div>` : '—'}</dd>

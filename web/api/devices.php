@@ -159,7 +159,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $fresh = $d['last_seen_ts'] !== null && $now - $d['last_seen_ts'] <= RELAY_OFFLINE_AFTER;
         $d['online'] = $fresh && $d['status'] !== 0;
         $d['state'] = $d['last_seen_ts'] === null ? 'never'
-            : (!$d['online'] ? 'offline' : ($d['status'] === 2 ? 'error' : ($d['alarm'] === 1 ? 'alarm' : 'online')));
+            : (!$d['online'] ? 'offline' : ($d['status'] === 2 ? 'error' : 'online')); // признак «питание от АКБ» не показывается
         $out[] = $d;
     }
     return $out;
@@ -168,12 +168,11 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
 switch ($action) {
     case 'list':
         $devices = device_rows($connect);
-        $sum = ['total' => count($devices), 'online' => 0, 'offline' => 0, 'alarm' => 0, 'never' => 0];
+        $sum = ['total' => count($devices), 'online' => 0, 'offline' => 0, 'never' => 0];
         foreach ($devices as $d) {
             if ($d['state'] === 'never') $sum['never']++;
             elseif ($d['online']) $sum['online']++;
             else $sum['offline']++;
-            if ($d['online'] && $d['alarm'] === 1) $sum['alarm']++;
         }
         $last = mysqli_fetch_assoc(mysqli_query($connect, "SELECT MAX(ts) AS ts, UNIX_TIMESTAMP(MAX(ts)) AS t FROM mqtt_messages WHERE broker_id = 1 AND direction = 'in'"));
         relay_json(['devices' => $devices, 'summary' => $sum, 'last_message_ts' => $last['t'] ? (int)$last['t'] : null, 'now' => time(),

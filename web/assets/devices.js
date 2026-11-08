@@ -15,7 +15,6 @@
     let list = devices.filter(d => {
       if (filter === 'online' && !d.online) return false;
       if (filter === 'offline' && (d.online || d.state === 'never')) return false;
-      if (filter === 'alarm' && !(d.online && d.alarm === 1)) return false;
       if (filter === 'never' && d.state !== 'never') return false;
       return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q);
     });
@@ -54,7 +53,6 @@
       <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
       <span class="item">${signalBars(d.signal_level)}</span>
       ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
-      ${d.alarm === 1 && d.online ? `<span class="badge alarm">${ICONS.battery}питание от АКБ</span>` : ''}
       ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}`;
   };
 

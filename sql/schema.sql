@@ -288,3 +288,30 @@ ALTER TABLE `general_info`
 ALTER TABLE `devices`
     ADD COLUMN IF NOT EXISTS `break_in_at` DATETIME DEFAULT NULL,             -- время взлома (NULL — тревоги нет)
     ADD COLUMN IF NOT EXISTS `break_in_source` VARCHAR(20) DEFAULT NULL;      -- relay4 — замок на реле 4, door — геркон платы ver_5_1
+
+-- ---------------------------------------------------------------------------
+-- v3.9: симуляция устройств из монитора — подписчик сам публикует stat от имени устройства
+--       и отвечает rep на команды com/{id}, как настоящая плата
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `mqtt_simulations` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `broker_id` INT(11) NOT NULL,
+    `device_id` INT(11) NOT NULL,
+    `relays` VARCHAR(16) NOT NULL DEFAULT '0,0,0,0',   -- состояние реле 1–4
+    `version` TINYINT(4) NOT NULL DEFAULT 2,             -- 2 — 40 байт, 3 — 48 байт (замок и дверь, плата ver_5_1)
+    `lock_state` TINYINT(1) NOT NULL DEFAULT 0,
+    `door_state` TINYINT(1) NOT NULL DEFAULT 0,
+    `signal_level` TINYINT(4) NOT NULL DEFAULT 20,
+    `bat_adc` INT(11) NOT NULL DEFAULT 600,
+    `interval_sec` INT(11) NOT NULL DEFAULT 60,           -- как часто публиковать stat
+    `dirty` TINYINT(1) NOT NULL DEFAULT 0,                -- изменено в панели: опубликовать stat сейчас
+    `stat_count` INT(11) NOT NULL DEFAULT 0,
+    `cmd_count` INT(11) NOT NULL DEFAULT 0,
+    `last_stat_at` DATETIME DEFAULT NULL,
+    `last_cmd_at` DATETIME DEFAULT NULL,
+    `last_cmd` VARCHAR(120) DEFAULT NULL,
+    `created_by` VARCHAR(64) DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uniq_sim` (`broker_id`, `device_id`),
+    CONSTRAINT `fk_sim_broker` FOREIGN KEY (`broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

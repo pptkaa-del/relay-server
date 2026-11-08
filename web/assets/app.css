@@ -94,7 +94,7 @@ h2 { font-size: 15px; font-weight: 600; }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-head h2 { flex: 1; }
 .card-body { padding: 16px; }
-.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .tile { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; text-align: left; font: inherit; color: inherit; }
 .tile:hover { border-color: var(--line-strong); }
 .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -282,7 +282,7 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 
 /* ---------- Адаптив ---------- */
 @media (max-width: 1100px) {
-  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .layout-2 { grid-template-columns: 1fr; }
   .layout-2 > .stack { display: contents; }
   .o-last { order: 1; } .o-relays { order: 2; } .o-lock { order: 3; } .o-bat { order: 4; } .o-logs { order: 5; } .o-info { order: 6; }
@@ -494,3 +494,16 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
 /* отключение реле в форме */
 .relay-field .relay-off { font-size: 12px; color: var(--muted); white-space: normal; }
 @media (max-width: 760px) { .map { height: 300px; } .map-legend { flex-basis: 100%; order: 3; } }
+
+/* ---------- Монитор: симуляция устройств ---------- */
+.sim-head { display: flex; align-items: center; gap: 8px; margin: 12px 0 6px; font-size: 13.5px; }
+.sim-head .spacer { flex: 1; }
+.sim-tbl { width: 100%; border-collapse: collapse; }
+.sim-tbl td { vertical-align: middle; }
+.sim-relays { display: flex; flex-wrap: wrap; gap: 4px; }
+.sim-relay { min-width: 30px; height: 28px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-2);
+  color: var(--text-2); font: 600 12.5px var(--font); cursor: pointer; }
+.sim-relay.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.sim-relay.door.open { background: var(--warn); border-color: var(--warn); color: #fff; }
+.sim-relay:disabled { opacity: .6; cursor: progress; }
+@media (max-width: 760px) { #sim-form .field.grow { flex-basis: 100%; } #sim-form .field select.input { min-width: 0 !important; } }

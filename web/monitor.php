@@ -55,6 +55,26 @@ layout_head('Монитор', 'monitor', $login);
       </details>
     </section>
 
+    <section class="card" id="sim-card">
+      <div class="card-head"><h2>Симуляция устройств</h2>
+        <span class="muted" style="font-size:12.5px">сервер публикует stat от имени устройств и отвечает на команды, как настоящая плата</span></div>
+      <div class="card-body">
+        <form class="send-row" id="sim-form">
+          <label class="field grow">Номера устройств<input class="input mono" name="devices" required placeholder="например 101, 102-105"></label>
+          <label class="field">Брокер<select class="input" name="broker_id" style="min-width:170px"></select></label>
+          <label class="field">stat каждые, с<input class="input" name="interval_sec" type="number" min="5" max="3600" value="60" style="width:100px"></label>
+          <label class="field">Плата<select class="input" name="version" style="width:170px">
+            <option value="2">v2 — 4 реле</option><option value="3">ver_5_1 — замок и дверь</option></select></label>
+          <div class="btn-row"><button class="btn primary" type="submit">Запустить</button></div>
+        </form>
+        <div class="result" id="sim-result"></div>
+        <div id="sim-list"></div>
+        <p class="muted" style="font-size:12.5px;margin:10px 0 0">Устройства собственного брокера появляются в разделе «Устройства» как обычные, и ими можно управлять из панели.
+          Кнопки реле в этом списке переключают реле «на месте», без команды: так можно проверить, например, тревогу «взлом двери»
+          (реле 4 — замок: выключить реле 4).</p>
+      </div>
+    </section>
+
     <section class="card">
       <div class="card-head">
         <h2>Сообщения</h2>
@@ -145,4 +165,4 @@ layout_head('Монитор', 'monitor', $login);
   </form>
 </dialog>
 
-<?php layout_foot(['monitor.js', 'forwards.js']); ?>
+<?php layout_foot(['monitor.js', 'forwards.js', 'sim.js']); ?>

@@ -117,7 +117,7 @@
     $('#devices').innerHTML = devices.length ? devices.map(d => `
       <div class="side-item ${d.id === selected ? 'sel' : ''}" data-id="${d.id}" role="button" tabindex="0">
         <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
-        <div class="side-item-meta">${d.ts ? 'данные ' + ago(d.ts) : 'данных не было'}${d.signal != null ? ' · сигнал ' + d.signal : ''}${d.alarm === 1 ? ' · <span style="color:var(--warn)">АКБ</span>' : ''}</div>
+        <div class="side-item-meta">${d.ts ? 'данные ' + ago(d.ts) : 'данных не было'}${d.signal != null ? ' · сигнал ' + d.signal : ''}</div>
         <div class="mini-relays">${d.relays.map((s, i) => `<span class="${s === 1 ? 'on' : s === 2 ? 'er' : ''}">${i + 1}</span>`).join('')}</div>
         ${!b.is_local && d.registered === false ? `<a class="btn sm" style="margin-top:8px" href="/index.php?add=${d.id}" title="Зарегистрировать устройство на этом сервере">+ Добавить в систему</a>` : ''}
       </div>`).join('')

@@ -16,7 +16,6 @@ layout_head('Устройства', 'devices', $login);
   <button class="tile sel" data-f="all"><div class="tile-label">Всего устройств</div><div class="tile-value" data-k="total">—</div><div class="tile-sub">зарегистрировано</div></button>
   <button class="tile" data-f="online"><div class="tile-label"><span class="dot online"></span>На связи</div><div class="tile-value" data-k="online">—</div><div class="tile-sub">stat за последние 6 мин</div></button>
   <button class="tile" data-f="offline"><div class="tile-label"><span class="dot offline"></span>Нет связи</div><div class="tile-value" data-k="offline">—</div><div class="tile-sub">данных нет &gt; 350 с</div></button>
-  <button class="tile" data-f="alarm"><div class="tile-label"><span class="dot alarm"></span>Питание от АКБ</div><div class="tile-value" data-k="alarm">—</div><div class="tile-sub">авария основного питания</div></button>
   <button class="tile" data-f="never"><div class="tile-label"><span class="dot never"></span>Ожидают</div><div class="tile-value" data-k="never">—</div><div class="tile-sub">ещё не выходили на связь</div></button>
 </div>
 
@@ -33,7 +32,7 @@ layout_head('Устройства', 'devices', $login);
     <div class="map-legend">
       <span><i class="pin c-green"></i>на связи</span>
       <span><i class="pin c-red"></i>нет данных</span>
-      <span><i class="pin c-yellow"></i>нет питания (работа от АКБ)</span>
+      <span><i class="pin c-yellow"></i>на связи, все реле выключены</span>
       <span><i class="pin c-blue"></i>дверь открыта</span>
       <span><i class="pin c-purple"></i>взлом двери</span>
     </div>

@@ -162,7 +162,7 @@ const App = (() => {
     if (!d) return '<span class="tag">двоичные данные</span>';
     if (d.type === 'stat') {
       const rel = [d.r1, d.r2, d.r3, d.r4].map((v, i) => `${i + 1}:${RSTATE[v] ?? v}`).join(' ');
-      return `<b>stat</b> · устройство #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.alarm ? ' · <span class="badge alarm">питание от АКБ</span>' : ''}${d.door != null ? ' · дверь ' + (d.door ? '<span class="badge warn">открыта</span>' : 'закрыта') + ' · замок ' + (d.lock ? 'вкл' : 'выкл') : ''}`;
+      return `<b>stat</b> · устройство #${d.id} · реле ${rel} · ${['оффлайн', 'онлайн', 'ошибка'][d.stat] ?? d.stat} · сигнал ${d.sl === 99 ? 'н/д' : d.sl}${d.bat_adc != null ? ' · АЦП АКБ ' + d.bat_adc : ''}${d.door != null ? ' · дверь ' + (d.door ? '<span class="badge warn">открыта</span>' : 'закрыта') + ' · замок ' + (d.lock ? 'вкл' : 'выкл') : ''}`;
     }
     if (d.type === 'rep') return `<b>rep</b> · устройство #${d.id} · команда ${d.cmd_id} · ${d.success === 1 ? '<span class="badge success">выполнена</span>' : '<span class="badge error">не выполнена</span>'}`;
     if (d.type === 'com') return `<b>${esc(d.command_name)}</b>${[1, 2, 3].includes(d.command) ? ' · ' + (d.rel_number === 5 ? 'замок' : d.rel_number ? 'реле ' + d.rel_number : 'все реле') : ''} · cmd_id ${d.cmd_id}`;
