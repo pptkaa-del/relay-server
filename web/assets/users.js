@@ -21,12 +21,12 @@
       <td>${esc(u.name) || '<span class="muted">—</span>'}</td>
       <td><span class="badge ${ROLE_BADGE[u.role] ?? ''}">${esc(roles[u.role] || u.role)}</span></td>
       <td class="muted">${u.role === 'admin' ? 'все' : permSummary(u.perms)}</td>
-      <td class="nowrap" title="за 30 дней: ${u.restarts.d30} · сегодня: ${u.restarts.today}${u.restarts.last_ts ? ' · последний: ' + fmtTime(u.restarts.last_ts) : ''}">
-        <b>${u.restarts.total}</b>${u.restarts.total ? ` <span class="muted" style="font-size:12px">· 30 дн ${u.restarts.d30} · сегодня ${u.restarts.today}</span>` : ''}</td>
+      <td class="nowrap">${clickCell(u, 'restarts')}</td>
+      <td class="nowrap">${clickCell(u, 'reboots')}</td>
       <td>${u.system ? '<span class="muted">создан при установке</span>' : u.enabled ? 'разрешён' : '<span class="badge bad">отключён</span>'}</td>
       <td class="muted">${u.last_login_ts ? `<span title="${fmtTime(u.last_login_ts)}">${ago(u.last_login_ts)}</span>` : '—'}</td>
       <td class="users-act">${u.system ? '' : `<button class="btn sm" data-edit="${esc(u.login)}">Изменить</button>`}</td></tr>`).join('')
-      || '<tr><td colspan="8" class="muted">Пользователей нет</td></tr>';
+      || '<tr><td colspan="9" class="muted">Пользователей нет</td></tr>';
   }
 
   async function load() {
@@ -73,21 +73,31 @@
     $$('[data-perm]').forEach(s => { s.value = b.dataset.allPerm; }); updSummary();
   }));
 
-  /* ---------- Перезапуски реле пользователя по устройствам ---------- */
-  async function loadClicks(u) {
-    const box = $('#clicks-box');
-    box.classList.toggle('hidden', !u || !u.restarts.total);
-    if (!u || !u.restarts.total) return;
+  /* ---------- Нажатия «Перезапуск реле» и «Перезагрузить устройство» ---------- */
+  function clickCell(u, key) {
+    const c = u[key];
+    if (!c.total) return '<span class="muted">0</span>';
+    return `<button class="link-btn" data-clicks="${esc(u.login)}" title="за 30 дней: ${c.d30} · сегодня: ${c.today}${c.last_ts ? ' · последнее: ' + fmtTime(c.last_ts) : ''}">
+      <b>${c.total}</b></button> <span class="muted" style="font-size:12px">· 30 дн ${c.d30} · сегодня ${c.today}</span>`;
+  }
+  const CMD_NAME = { 3: 'Перезапуск реле', 5: 'Перезагрузка устройства' };
+  async function openClicks(login) {
+    const u = users.find(x => x.login === login); if (!u) return;
+    $('#clicks-title').textContent = `Нажатия: ${login}${u.name ? ' (' + u.name + ')' : ''}`;
     $('#clicks-list').innerHTML = '<span class="muted">Загрузка…</span>';
+    $('#clicks-dlg').showModal();
     try {
-      const rows = (await api('/api/users.php', { action: 'clicks', login: u.login })).clicks;
-      $('#clicks-list').innerHTML = `<div class="muted" style="font-size:13px;margin:6px 0">Всего ${u.restarts.total} · за 30 дней ${u.restarts.d30} · сегодня ${u.restarts.today}</div>
-        <div class="table-wrap"><table class="tbl clicks-tbl"><thead><tr><th>Устройство</th><th>Реле</th><th>Всего</th><th>30 дней</th><th>Последний</th></tr></thead><tbody>
-        ${rows.map(r => `<tr><td>${esc(r.device_name)} <span class="mono muted">#${r.device_id}</span></td>
-          <td>${r.relay_num ? esc(r.relay_name || 'Реле ' + r.relay_num) + ` <span class="muted">(${r.relay_num})</span>` : 'все реле'}</td>
+      const rows = (await api('/api/users.php', { action: 'clicks', login })).clicks;
+      const sum = (k, t) => `${t}: всего <b>${u[k].total}</b> · за 30 дней ${u[k].d30} · сегодня ${u[k].today}`;
+      $('#clicks-list').innerHTML = `<div style="font-size:13px;margin:10px 0">${sum('restarts', 'Перезапуски реле')}<br>${sum('reboots', 'Перезагрузки устройств')}</div>
+        <div class="table-wrap"><table class="tbl clicks-tbl"><thead><tr><th>Кнопка</th><th>Устройство</th><th>Реле</th><th>Всего</th><th>30 дней</th><th>Последнее</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td>${CMD_NAME[r.command] || r.command}</td><td>${esc(r.device_name)} <span class="mono muted">#${r.device_id}</span></td>
+          <td>${r.command === 5 ? '—' : r.relay_num ? esc(r.relay_name || 'Реле ' + r.relay_num) + ` <span class="muted">(${r.relay_num})</span>` : 'все реле'}</td>
           <td><b>${r.total}</b></td><td>${r.d30}</td><td class="muted nowrap">${fmtTime(r.last_ts)}</td></tr>`).join('')}</tbody></table></div>`;
     } catch (e) { $('#clicks-list').innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
   }
+  $('#users').addEventListener('click', e => { const b = e.target.closest('[data-clicks]'); if (b) openClicks(b.dataset.clicks); });
+  $('#clicks-dlg').addEventListener('click', e => { if (e.target.closest('[data-close]')) $('#clicks-dlg').close(); });
 
   /* ---------- Карточка пользователя ---------- */
   const dlg = $('#user-dlg'), form = $('#user-form'), F = k => form.elements[k];
@@ -115,7 +125,6 @@
     if (u) { F('login').value = u.login; F('name').value = u.name; F('role').value = u.role; F('enabled').value = u.enabled ? '1' : '0'; }
     else { F('password').value = genPass(); F('role').value = 'user'; }
     renderPerms(u ? u.perms : {});
-    loadClicks(u);
     syncRole();
     dlg.showModal();
     (u ? F('name') : F('login')).focus();
@@ -153,5 +162,5 @@
     } catch (er) { $('#user-result').className = 'result err'; $('#user-result').textContent = er.message; }
   });
 
-  load().catch(e => { $('#users').innerHTML = `<tr><td colspan="8">${esc(e.message)}</td></tr>`; });
+  load().catch(e => { $('#users').innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`; });
 })();

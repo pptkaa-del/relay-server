@@ -352,3 +352,15 @@ SELECT e.`user_login`, e.`device_id`, CAST(JSON_VALUE(e.`data`, '$.relay') AS UN
    AND CAST(JSON_VALUE(e.`data`, '$.relay') AS UNSIGNED) <> 5
    AND NOT (CAST(JSON_VALUE(e.`data`, '$.relay') AS UNSIGNED) = 4 AND COALESCE(g.`relay4_lock`, 0) = 1)
    AND NOT EXISTS (SELECT 1 FROM `relay_restart_clicks`);
+
+-- ---------------------------------------------------------------------------
+-- v3.13: в счётчике нажатий — и «Перезагрузить устройство» (команда 5)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `relay_restart_clicks`
+    ADD COLUMN IF NOT EXISTS `command` TINYINT(4) NOT NULL DEFAULT 3 AFTER `login`;   -- 3 — перезапуск реле, 5 — перезагрузка устройства
+-- прежние перезагрузки — из журнала событий (один раз)
+INSERT INTO `relay_restart_clicks` (`login`, `command`, `device_id`, `relay_num`, `created_at`)
+SELECT e.`user_login`, 5, e.`device_id`, 0, e.`ts`
+  FROM `device_events` e
+ WHERE e.`type` = 'reboot' AND e.`user_login` IS NOT NULL AND JSON_VALUE(e.`data`, '$.command') = '5'
+   AND NOT EXISTS (SELECT 1 FROM `relay_restart_clicks` WHERE `command` = 5);

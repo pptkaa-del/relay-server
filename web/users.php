@@ -22,8 +22,8 @@ layout_head('Пользователи', 'users', $login);
 <section class="card">
   <div class="table-wrap">
     <table class="tbl users-tbl">
-      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th title="Нажатия «Перезапуск реле»; «Открыть» замку не считается">Перезапуски реле</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
-      <tbody id="users"><tr><td colspan="8" class="muted">Загрузка…</td></tr></tbody>
+      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th title="Нажатия «Перезапуск реле»; «Открыть» замку не считается">Перезапуски реле</th><th title="Нажатия «Перезагрузить устройство»">Перезагрузки устройств</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
+      <tbody id="users"><tr><td colspan="9" class="muted">Загрузка…</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -60,11 +60,6 @@ layout_head('Пользователи', 'users', $login);
           <span class="hint" id="pass-hint"></span>
         </div>
       </div>
-      <fieldset class="fieldset hidden" id="clicks-box">
-        <legend>Перезапуски реле</legend>
-        <p class="hint" style="margin:0">Нажатия «Перезапуск реле» этим пользователем. Команда «Открыть» замку не учитывается.</p>
-        <div id="clicks-list"></div>
-      </fieldset>
       <fieldset class="fieldset" id="perm-box">
         <legend>Доступ к реле</legend>
         <div class="perm-tools">
@@ -84,6 +79,14 @@ layout_head('Пользователи', 'users', $login);
       <button class="btn primary" type="submit" id="user-submit">Добавить</button>
     </div>
   </form>
+</dialog>
+
+<dialog class="modal wide" id="clicks-dlg">
+  <div class="modal-head"><h2 id="clicks-title">Нажатия</h2><button class="btn ghost sm" data-close>✕</button></div>
+  <div class="modal-body">
+    <p class="hint" style="margin:0">«Перезапуск реле» и «Перезагрузить устройство», нажатые пользователем. «Открыть» замку не учитывается.</p>
+    <div id="clicks-list"></div>
+  </div>
 </dialog>
 
 <?php layout_foot(['users.js']); ?>

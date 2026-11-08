@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.13';
+const RELAY_VERSION       = '3.14';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -795,10 +795,11 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
     // retain только для реле 1–4: плата восстановит их состояние после переподключения.
     // Команды замку не сохраняются в брокере — иначе замок срабатывал бы при каждом переподключении.
     $retain = in_array($command, [1, 2], true) && $relay !== RELAY_LOCK;
-    // счётчик нажатий «Перезапуск реле» по пользователям; «Открыть» замку (реле 4 — замок, замок платы) не считается
-    if ($command === 3 && $user !== null && $relay !== RELAY_LOCK && !($relay === 4 && relay_relay4_lock($db, $deviceId))) {
-        @relay_q($db, 'INSERT INTO relay_restart_clicks (login, device_id, relay_num, broker_id) VALUES (?, ?, ?, ?)',
-            [$user, $deviceId, $relay, $brokerId]);
+    // счётчик нажатий по пользователям: «Перезапуск реле» (3) и «Перезагрузить устройство» (5);
+    // «Открыть» замку (реле 4 — замок, замок платы) не считается
+    if ($user !== null && (($command === 3 && $relay !== RELAY_LOCK && !($relay === 4 && relay_relay4_lock($db, $deviceId))) || $command === 5)) {
+        @relay_q($db, 'INSERT INTO relay_restart_clicks (login, command, device_id, relay_num, broker_id) VALUES (?, ?, ?, ?, ?)',
+            [$user, $command, $deviceId, $relay, $brokerId]);
     }
     if ($local) {
         // событие пишем до отправки: плата может ответить раньше, чем завершится publish

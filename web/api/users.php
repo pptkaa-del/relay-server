@@ -136,27 +136,29 @@ switch ($action) {
         }
         // счётчик нажатий «Перезапуск реле» («Открыть» замку не считается)
         $clicks = [];
-        $res = @mysqli_query($connect, "SELECT login, COUNT(*) AS total, SUM(created_at >= NOW() - INTERVAL 30 DAY) AS d30,
+        $res = @mysqli_query($connect, "SELECT login, command, COUNT(*) AS total, SUM(created_at >= NOW() - INTERVAL 30 DAY) AS d30,
                                                SUM(created_at >= CURDATE()) AS today, UNIX_TIMESTAMP(MAX(created_at)) AS last_ts
-                                          FROM relay_restart_clicks GROUP BY login");
+                                          FROM relay_restart_clicks GROUP BY login, command");
         foreach (relay_rows($res ?: null) as $c) {
-            $clicks[$c['login']] = ['total' => (int)$c['total'], 'd30' => (int)$c['d30'], 'today' => (int)$c['today'], 'last_ts' => (int)$c['last_ts']];
+            $clicks[$c['login']][(int)$c['command']] = ['total' => (int)$c['total'], 'd30' => (int)$c['d30'], 'today' => (int)$c['today'], 'last_ts' => (int)$c['last_ts']];
         }
+        $zero = ['total' => 0, 'd30' => 0, 'today' => 0, 'last_ts' => null];
         foreach ($users as &$u) {
-            $u['restarts'] = $clicks[$u['login']] ?? ['total' => 0, 'd30' => 0, 'today' => 0, 'last_ts' => null];
+            $u['restarts'] = $clicks[$u['login']][3] ?? $zero;   // «Перезапуск реле»
+            $u['reboots'] = $clicks[$u['login']][5] ?? $zero;    // «Перезагрузить устройство»
         }
         unset($u);
         relay_json(['users' => $users, 'roles' => RELAY_ROLES, 'me' => $login, 'min_pass' => RELAY_MIN_PASS, 'devices' => $devices]);
 
     case 'clicks':
-        $rows = relay_rows(relay_q($connect, "SELECT c.device_id, c.relay_num, COUNT(*) AS total, SUM(c.created_at >= NOW() - INTERVAL 30 DAY) AS d30,
+        $rows = relay_rows(relay_q($connect, "SELECT c.command, c.device_id, c.relay_num, COUNT(*) AS total, SUM(c.created_at >= NOW() - INTERVAL 30 DAY) AS d30,
                     UNIX_TIMESTAMP(MAX(c.created_at)) AS last_ts,
                     COALESCE(NULLIF(g.name_obj, ''), CONCAT('Устройство ', c.device_id)) AS device_name,
                     CASE c.relay_num WHEN 1 THEN g.name_reley_1 WHEN 2 THEN g.name_reley_2 WHEN 3 THEN g.name_reley_3 WHEN 4 THEN g.name_reley_4 ELSE NULL END AS relay_name
                FROM relay_restart_clicks c LEFT JOIN general_info g ON g.id = c.device_id
-              WHERE c.login = ? GROUP BY c.device_id, c.relay_num ORDER BY total DESC, c.device_id LIMIT 100", [(string)($_GET['login'] ?? '')]));
+              WHERE c.login = ? GROUP BY c.command, c.device_id, c.relay_num ORDER BY c.command, total DESC, c.device_id LIMIT 200", [(string)($_GET['login'] ?? '')]));
         foreach ($rows as &$r) {
-            foreach (['device_id', 'relay_num', 'total', 'd30', 'last_ts'] as $k) {
+            foreach (['command', 'device_id', 'relay_num', 'total', 'd30', 'last_ts'] as $k) {
                 $r[$k] = (int)$r[$k];
             }
         }
