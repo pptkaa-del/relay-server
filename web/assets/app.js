@@ -111,13 +111,16 @@ const App = (() => {
     return `<span class="signal s${lvl}" title="Сигнал ${sl}/31 — ${word}"><i></i><i></i><i></i><i></i></span>`;
   }
 
-  /** Калибровка АКБ: опорные напряжения (как RELAY_BAT_V_LOW/HIGH на сервере) */
+  /** Калибровка АКБ по типу (как RELAY_BAT_TYPES на сервере): 12 В — точки 6 и 15 В, 24 В — 19 и 26 В */
+  const BAT_TYPES = { 12: { low: 6, high: 15, bad: 11.5, warn: 12.2 }, 24: { low: 19, high: 26, bad: 23, warn: 24.4 } };
+  const batType = d => BAT_TYPES[d && d.bat_type === 24 ? 24 : 12];
   const BAT_V_LOW = 6, BAT_V_HIGH = 15;
-  /** Напряжение АКБ: цвет по уровню (12-вольтовая АКБ: < 11,5 В — разряжена, < 12,2 В — внимание) */
-  const batClass = v => v == null ? 'raw' : v < 11.5 ? 'bad' : v < 12.2 ? 'warn' : 'ok';
+  /** Напряжение АКБ: цвет по уровню (12 В: < 11,5 — разряжена, < 12,2 — внимание; 24 В: < 23 и < 24,4) */
+  const batClass = (v, d) => { const t = batType(d); return v == null ? 'raw' : v < t.bad ? 'bad' : v < t.warn ? 'warn' : 'ok'; };
   function batteryHtml(d) {
-    if (d.bat_voltage != null) return `<span class="bat ${batClass(d.bat_voltage)}" title="Напряжение АКБ (АЦП ${d.bat_adc})">${ICONS.battery}${d.bat_voltage.toFixed(1)} В</span>`;
-    if (d.bat_adc != null) return `<span class="bat raw" title="АКБ не откалибрована — укажите значения АЦП при 6 В и 15 В">${ICONS.battery}АЦП ${d.bat_adc}</span>`;
+    const t = batType(d);
+    if (d.bat_voltage != null) return `<span class="bat ${batClass(d.bat_voltage, d)}" title="АКБ ${d.bat_type || 12} В (АЦП ${d.bat_adc})">${ICONS.battery}${d.bat_voltage.toFixed(1)} В</span>`;
+    if (d.bat_adc != null) return `<span class="bat raw" title="АКБ не откалибрована — укажите значения АЦП при ${t.low} В и ${t.high} В">${ICONS.battery}АЦП ${d.bat_adc}</span>`;
     return '';
   }
 
@@ -169,7 +172,11 @@ const App = (() => {
 
   /* ---------- Команды платам ---------- */
   const CMD = { 1: 'Включить', 2: 'Выключить', 3: 'Перезапуск реле', 4: 'Запрос статуса', 5: 'Перезагрузка устройства' };
-  function cmdLabel(command, relay) {
+  /** Реле 4 — замок двери: включено — закрыто, выключено — открыто */
+  const LOCK4_CMD = { 1: 'Закрыть', 2: 'Открыть надолго', 3: 'Открыть' };
+  const LOCK4_STATE = { 0: 'дверь открыта', 1: 'дверь закрыта', 2: 'ошибка' };
+  function cmdLabel(command, relay, lock4 = false) {
+    if (relay === 4 && lock4 && LOCK4_CMD[command]) return 'Замок: ' + LOCK4_CMD[command].toLowerCase();
     if (relay === 5) return { 1: 'Замок: подать питание', 2: 'Замок: снять питание', 3: 'Замок: открыть' }[command] || CMD[command];
     return CMD[command] + ([1, 2, 3].includes(command) ? ' · ' + (relay ? 'реле ' + relay : 'все реле') : '');
   }
@@ -177,8 +184,13 @@ const App = (() => {
    * Отправляет команду и ждёт ответ платы (rep) до 60 с.
    * opts: {url, params, statusUrl, statusParams, onDone(status)}
    */
-  async function sendCommand({ url, params, statusUrl, statusParams = {}, label, onDone }) {
+  async function sendCommand({ url, params, statusUrl, statusParams = {}, label, onDone, quiet = false }) {
     const j = await api(url, params, true);
+    if (quiet) { // замок на реле 4: результат выполнения не показываем, только обновляем состояние
+      toast(`${label}: команда отправлена`, 'ok');
+      setTimeout(() => onDone && onDone('sent'), 3000);
+      return j.cmd_id;
+    }
     toast(`${label}: отправлено, ждём ответ устройства…`);
     (async () => {
       for (let i = 0; i < 30; i++) {
@@ -202,5 +214,17 @@ const App = (() => {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { clearTimeout(t); run(); } });
   }
 
-  return { BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /** Форма с полем bat_type: подписи «АЦП при … В» следуют за типом АКБ (12 В — 6/15 В, 24 В — 19/26 В) */
+  function bindBatType(form) {
+    const upd = () => {
+      const t = BAT_TYPES[form.elements.bat_type.value === '24' ? 24 : 12];
+      form.querySelectorAll('[data-bat-low]').forEach(el => { el.textContent = t.low; });
+      form.querySelectorAll('[data-bat-high]').forEach(el => { el.textContent = t.high; });
+    };
+    form.elements.bat_type.addEventListener('change', upd);
+    form.addEventListener('bat-type', upd);
+    upd();
+  }
+
+  return { bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

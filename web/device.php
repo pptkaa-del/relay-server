@@ -87,16 +87,19 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60"></label>
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60"></label>
+        <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
+          <span class="hint">включено — дверь закрыта, выключено — открыта; кнопки: «Закрыть», «Открыть», «Открыть надолго»</span></label>
         <fieldset class="fieldset">
-          <legend>Калибровка напряжения АКБ</legend>
-          <p class="hint">Подайте на вход АКБ устройства 6 В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
-            затем то же для 15 В. Напряжение считается по прямой через эти две точки.</p>
+          <legend>АКБ и калибровка напряжения</legend>
+          <label class="field">Тип АКБ<select class="input" name="bat_type"><option value="12">12 В</option><option value="24">24 В</option></select></label>
+          <p class="hint">Подайте на вход АКБ устройства <span data-bat-low>6</span> В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;
+            затем то же для <span data-bat-high>15</span> В. Напряжение считается по прямой через эти две точки.</p>
           <p class="hint" id="cal-current"></p>
           <div class="form-grid">
-            <div class="cal-row"><label class="field">АЦП при 6 В<input class="input" name="cal_adc_6" type="number" min="0" max="65535" step="1"></label>
-              <button class="btn" type="button" data-cal="cal_adc_6">Текущее</button></div>
-            <div class="cal-row"><label class="field">АЦП при 15 В<input class="input" name="cal_adc_15" type="number" min="0" max="65535" step="1"></label>
-              <button class="btn" type="button" data-cal="cal_adc_15">Текущее</button></div>
+            <div class="cal-row"><label class="field"><span>АЦП при <span data-bat-low>6</span> В</span><input class="input" name="cal_low" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_low">Текущее</button></div>
+            <div class="cal-row"><label class="field"><span>АЦП при <span data-bat-high>15</span> В</span><input class="input" name="cal_high" type="number" min="0" max="65535" step="1"></label>
+              <button class="btn" type="button" data-cal="cal_high">Текущее</button></div>
           </div>
         </fieldset>
       </div>

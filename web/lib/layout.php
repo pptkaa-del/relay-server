@@ -9,7 +9,9 @@ function layout_head(string $title, string $active, string $login): void
         'labels'  => ['/labels.php', 'Наклейки', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>'],
     ];
     $role = relay_current_role();
-    if ($role === 'admin') {
+    if ($role !== 'admin') {
+        unset($nav['monitor'], $nav['labels']); // монитор и наклейки — только администратору
+    } else {
         $nav['users'] = ['/users.php', 'Пользователи', '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 9M22 21a7 7 0 0 0-4-6.3"/>'];
     }
     relay_config(); // часовой пояс сервера для date('Z')
@@ -43,7 +45,7 @@ function layout_head(string $title, string $active, string $login): void
       <div class="menu-pop">
         <div class="menu-user"><?= h($login) ?><small><?= h(RELAY_ROLES[$role] ?? '') ?></small></div>
         <button type="button" id="pw-open">Сменить пароль</button>
-        <a href="/legacy.php">Классическая панель</a>
+        <?php if ($role === 'admin'): ?><a href="/legacy.php">Классическая панель</a><?php endif; ?>
         <button type="button" id="theme-toggle">Сменить тему</button>
         <a href="/aut/verificat.php?aut=finish">Выйти</a>
       </div>

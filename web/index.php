@@ -60,13 +60,16 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="Реле 2"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="Реле 3"></label>
         <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="Реле 4"></label>
+        <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
+          <span class="hint">включено — дверь закрыта, выключено — открыта</span></label>
         <fieldset class="fieldset">
-          <legend>Калибровка напряжения АКБ (необязательно)</legend>
-          <p class="hint">Подайте на вход АКБ устройства 6 В и 15 В от лабораторного источника и запишите показания АЦП —
+          <legend>АКБ и калибровка напряжения (необязательно)</legend>
+          <label class="field">Тип АКБ<select class="input" name="bat_type"><option value="12">12 В</option><option value="24">24 В</option></select></label>
+          <p class="hint">Подайте на вход АКБ устройства <span data-bat-low>6</span> В и <span data-bat-high>15</span> В от лабораторного источника и запишите показания АЦП —
             их видно на странице устройства и в мониторе (поле «АЦП АКБ» пакета stat). Калибровку можно задать и позже.</p>
           <div class="form-grid">
-            <label class="field">АЦП при 6 В<input class="input" name="cal_adc_6" type="number" min="0" max="65535" step="1" placeholder="например, 150"></label>
-            <label class="field">АЦП при 15 В<input class="input" name="cal_adc_15" type="number" min="0" max="65535" step="1" placeholder="например, 375"></label>
+            <label class="field"><span>АЦП при <span data-bat-low>6</span> В</span><input class="input" name="cal_low" type="number" min="0" max="65535" step="1"></label>
+            <label class="field"><span>АЦП при <span data-bat-high>15</span> В</span><input class="input" name="cal_high" type="number" min="0" max="65535" step="1"></label>
           </div>
         </fieldset>
       </div>

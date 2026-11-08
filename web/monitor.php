@@ -13,6 +13,7 @@ layout_head('Монитор', 'monitor', $login);
   <select class="input" id="broker" aria-label="Брокер"></select>
   <div class="broker-info" id="broker-info"></div>
   <span style="flex:1"></span>
+  <button class="btn" id="b-forwards" title="Пересылка сообщений из одного брокера в другой">Переадресация…</button>
   <button class="btn" id="b-brokers">Брокеры…</button>
 </div>
 
@@ -106,4 +107,42 @@ layout_head('Монитор', 'monitor', $login);
   </form>
 </dialog>
 
-<?php layout_foot(['monitor.js']); ?>
+<dialog class="modal wide" id="forwards">
+  <div class="modal-head"><h2>Переадресация MQTT</h2><button class="btn ghost sm" data-close>✕</button></div>
+  <div class="modal-body">
+    <p class="muted" style="margin-top:0">Сообщения брокера-источника, подходящие под фильтр топиков, сервер сразу публикует в брокер-получатель
+      с тем же содержимым. Например, <span class="mono">com/#</span> из собственного брокера → старый сервер, или <span class="mono">stat, rep</span>
+      со старого сервера → в собственный брокер (устройства старого сервера появятся в панели). Брокеры добавляются кнопкой «Брокеры…».
+      Сообщение, пришедшее обратно по встречному правилу, повторно не пересылается.</p>
+    <div id="fwd-list"></div>
+    <div style="margin-top:12px"><button class="btn primary" id="fwd-add">+ Добавить правило</button></div>
+  </div>
+</dialog>
+
+<dialog class="modal" id="fwd-edit">
+  <form method="dialog" id="ff">
+    <div class="modal-head"><h2 id="ff-title">Правило переадресации</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <label class="field full">Название<input class="input" name="name" maxlength="100" placeholder="например, Команды на старый сервер"></label>
+        <label class="field">Откуда (брокер-источник)<select class="input" name="src_broker_id" required></select></label>
+        <label class="field">Куда (брокер-получатель)<select class="input" name="dst_broker_id" required></select></label>
+        <label class="field">Фильтр топиков<input class="input mono" name="topic_filter" value="#" required placeholder="#, com/#, stat">
+          <span class="hint">один фильтр: # — всё, + — один уровень (com/+)</span></label>
+        <label class="field">Префикс топика у получателя<input class="input mono" name="dst_prefix" maxlength="100" placeholder="необязательно, например site1/">
+          <span class="hint">«site1/» + «stat» → «site1/stat»</span></label>
+        <label class="check"><input type="checkbox" name="keep_retain" checked> сохранять флаг retain</label>
+        <label class="check"><input type="checkbox" name="enabled" checked> включено</label>
+      </div>
+      <div class="result" id="ff-result"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost danger-text hidden" type="button" id="ff-del" style="margin-right:auto">Удалить</button>
+      <button class="btn" value="cancel" formnovalidate>Отмена</button>
+      <button class="btn primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+
+<?php layout_foot(['monitor.js', 'forwards.js']); ?>

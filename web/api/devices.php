@@ -11,12 +11,36 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
+ *
+ * Администратор видит всё. Пользователь — только выданные ему реле (panel_user_relays): list/get/battery
+ * отдают только их, command проверяет право управления. add/update/delete/pending — только администратор.
+ * Калибровка АКБ: bat_type 12 (cal_low/cal_high — АЦП при 6 и 15 В) или 24 (при 19 и 26 В).
  */
 require __DIR__ . '/../conectbd.php';
 
 $action = $_REQUEST['action'] ?? 'list';
 if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
+}
+if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore'], true) && !relay_is_admin()) {
+    relay_forbidden('Добавлять устройства и изменять их данные может только администратор');
+}
+
+/** Тип АКБ и калибровка из формы → [bat_type, столбец_low => АЦП, столбец_high => АЦП] */
+function bat_from_post(): array
+{
+    $type = relay_bat_type($_POST['bat_type'] ?? 12);
+    $t = RELAY_BAT_TYPES[$type];
+    try {
+        $lo = relay_cal_value($_POST['cal_low'] ?? '');
+        $hi = relay_cal_value($_POST['cal_high'] ?? '');
+    } catch (RuntimeException $e) {
+        relay_json(['error' => $e->getMessage()], 400);
+    }
+    if ($lo !== null && $lo === $hi) {
+        relay_json(['error' => "Значения АЦП при {$t['low']} В и при {$t['high']} В должны различаться"], 400);
+    }
+    return [$type, $t['col_low'], $lo, $t['col_high'], $hi];
 }
 
 function device_rows(mysqli $db, ?int $onlyId = null): array
@@ -26,7 +50,8 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         SELECT x.id,
                COALESCE(NULLIF(g.name_obj, ''), d.name, CONCAT('Устройство ', x.id)) AS name,
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
-               COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15,
+               COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
+               COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
@@ -45,26 +70,51 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $relays[(int)$r['device_id']][(int)$r['relay_num']] = ['state' => (int)$r['state'], 'ts' => (int)$r['ts']];
     }
     $now = time();
-    foreach ($rows as &$d) {
+    $perms = relay_user_perms();   // null — администратор
+    $admin = $perms === null;
+    $out = [];
+    foreach ($rows as $d) {
         $id = (int)$d['id'];
+        if (!$admin && empty($perms[$id])) {
+            continue; // пользователю не выдано ни одного реле этого устройства
+        }
         $d['id'] = $id;
+        $d['relay4_lock'] = (int)$d['relay4_lock'] === 1;
         $d['relays'] = [];
         for ($i = 1; $i <= 4; $i++) {
-            $d['relays'][] = ['num' => $i, 'name' => ($d["name_reley_$i"] ?? '') ?: "Реле $i",
-                              'state' => $relays[$id][$i]['state'] ?? null, 'ts' => $relays[$id][$i]['ts'] ?? null];
+            if ($admin || isset($perms[$id][$i])) {
+                $d['relays'][] = ['num' => $i, 'name' => ($d["name_reley_$i"] ?? '') ?: "Реле $i",
+                                  'state' => $relays[$id][$i]['state'] ?? null, 'ts' => $relays[$id][$i]['ts'] ?? null,
+                                  'lock' => $i === 4 && $d['relay4_lock'],
+                                  'control' => $admin || $perms[$id][$i]];
+            }
             unset($d["name_reley_$i"]);
         }
-        $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_adc_6'], $d['cal_adc_15']);
-        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts', 'cal_adc_6', 'cal_adc_15', 'lock_state', 'door_state'] as $k) {
+        foreach (['status', 'version', 'signal_level', 'alarm', 'msg_count', 'last_seen_ts', 'last_data_ts', 'bat_adc', 'bat_adc_ts',
+                  'cal_adc_6', 'cal_adc_15', 'cal_adc_19', 'cal_adc_26', 'lock_state', 'door_state', 'bat_type'] as $k) {
             $d[$k] = $d[$k] === null ? null : (int)$d[$k];
         }
+        // АКБ: активная пара калибровки по типу 12 / 24 В
+        $bt = RELAY_BAT_TYPES[relay_bat_type($d['bat_type'])];
+        $d['bat_type'] = relay_bat_type($d['bat_type']);
+        $d['bat_v_low'] = $bt['low']; $d['bat_v_high'] = $bt['high'];
+        $d['bat_v_bad'] = $bt['bad']; $d['bat_v_warn'] = $bt['warn'];
+        $d['cal_low'] = $d[$bt['col_low']]; $d['cal_high'] = $d[$bt['col_high']];
+        $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_low'], $d['cal_high'], $d['bat_type']);
+        // замок платы ver_5_1 («реле 5»)
+        $d['lock_access'] = $admin ? 'control' : (isset($perms[$id][RELAY_LOCK]) ? ($perms[$id][RELAY_LOCK] ? 'control' : 'view') : null);
+        // что можно делать с устройством целиком
+        $d['can_edit'] = $admin;
+        $d['can_reboot'] = $admin || in_array(true, $perms[$id], true);
+        $d['can_all'] = $admin || (!empty($perms[$id][1]) && !empty($perms[$id][2]) && !empty($perms[$id][3]) && !empty($perms[$id][4]));
         $d['registered'] = (bool)$d['registered'];
         $fresh = $d['last_seen_ts'] !== null && $now - $d['last_seen_ts'] <= RELAY_OFFLINE_AFTER;
         $d['online'] = $fresh && $d['status'] !== 0;
         $d['state'] = $d['last_seen_ts'] === null ? 'never'
             : (!$d['online'] ? 'offline' : ($d['status'] === 2 ? 'error' : ($d['alarm'] === 1 ? 'alarm' : 'online')));
+        $out[] = $d;
     }
-    return $rows;
+    return $out;
 }
 
 switch ($action) {
@@ -78,7 +128,8 @@ switch ($action) {
             if ($d['online'] && $d['alarm'] === 1) $sum['alarm']++;
         }
         $last = mysqli_fetch_assoc(mysqli_query($connect, "SELECT MAX(ts) AS ts, UNIX_TIMESTAMP(MAX(ts)) AS t FROM mqtt_messages WHERE broker_id = 1 AND direction = 'in'"));
-        relay_json(['devices' => $devices, 'summary' => $sum, 'last_message_ts' => $last['t'] ? (int)$last['t'] : null, 'now' => time()]);
+        relay_json(['devices' => $devices, 'summary' => $sum, 'last_message_ts' => $last['t'] ? (int)$last['t'] : null, 'now' => time(),
+                    'is_admin' => relay_is_admin()]);
 
     case 'get':
         $id = (int)($_GET['id'] ?? 0);
@@ -111,15 +162,8 @@ switch ($action) {
         }
         $f = fn($k, $max = 200) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
         $name = $f('name') ?: "Устройство $id";
-        try {
-            $cal6 = relay_cal_value($_POST['cal_adc_6'] ?? '');
-            $cal15 = relay_cal_value($_POST['cal_adc_15'] ?? '');
-        } catch (RuntimeException $e) {
-            relay_json(['error' => $e->getMessage()], 400);
-        }
-        if ($cal6 !== null && $cal6 === $cal15) {
-            relay_json(['error' => 'Значения АЦП при 6 В и при 15 В должны различаться'], 400);
-        }
+        [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
+        $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
         relay_q($connect, 'INSERT INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            ON DUPLICATE KEY UPDATE name_obj = VALUES(name_obj), address = VALUES(address), coordinates = VALUES(coordinates),
@@ -127,12 +171,15 @@ switch ($action) {
                              name_reley_3 = VALUES(name_reley_3), name_reley_4 = VALUES(name_reley_4)',
             [$id, $name, $f('address', 300), $f('coordinates', 100),
              $f('relay1', 60) ?: 'Реле 1', $f('relay2', 60) ?: 'Реле 2', $f('relay3', 60) ?: 'Реле 3', $f('relay4', 60) ?: 'Реле 4']);
-        relay_q($connect, 'UPDATE general_info SET cal_adc_6 = ?, cal_adc_15 = ? WHERE id = ?', [$cal6, $cal15, $id]);
+        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
+            [$batType, $lock4, $calLo, $calHi, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
-        relay_event($connect, $id, 'info', 'Изменены название/адрес/подписи реле', 'info', null, $login);
+        relay_event($connect, $id, 'info', 'Изменены данные устройства: название, адрес, подписи реле, АКБ ' . $batType . ' В'
+            . ($lock4 ? ', реле 4 — замок' : ''), 'info', null, $login);
         relay_json(['ok' => true]);
 
     case 'command':
+        relay_check_command_access((int)($_POST['id'] ?? 0), (int)($_POST['command'] ?? 0), (int)($_POST['relay'] ?? 0));
         try {
             $cmdId = relay_send_command($connect, (int)($_POST['id'] ?? 0), (int)($_POST['command'] ?? 0), (int)($_POST['relay'] ?? 0), $login);
             relay_json(['ok' => true, 'cmd_id' => $cmdId]);
@@ -156,15 +203,8 @@ switch ($action) {
         $f = fn($k, $max) => mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST[$k] ?? ''))), 0, $max);
         $name = $f('name', 200) ?: "Устройство $id";
         $address = $f('address', 300);
-        try {
-            $cal6 = relay_cal_value($_POST['cal_adc_6'] ?? '');
-            $cal15 = relay_cal_value($_POST['cal_adc_15'] ?? '');
-        } catch (RuntimeException $e) {
-            relay_json(['error' => $e->getMessage()], 400);
-        }
-        if ($cal6 !== null && $cal6 === $cal15) {
-            relay_json(['error' => 'Значения АЦП при 6 В и при 15 В должны различаться'], 400);
-        }
+        [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
+        $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
         if ($code !== 0) {
@@ -177,9 +217,9 @@ switch ($action) {
         for ($i = 1; $i <= 4; $i++) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
-        relay_q($connect, 'UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  cal_adc_6 = ?, cal_adc_15 = ? WHERE id = ?',
-            [$relays[1], $relays[2], $relays[3], $relays[4], $cal6, $cal15, $id]);
+        relay_q($connect, "UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
+                                  bat_type = ?, relay4_lock = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
+            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $calLo, $calHi, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
@@ -207,7 +247,13 @@ switch ($action) {
     case 'battery':
         $id = (int)($_GET['id'] ?? 0);
         $hours = min(24 * 31, max(1, (int)($_GET['hours'] ?? 24)));
-        $cal = mysqli_fetch_assoc(relay_q($connect, 'SELECT cal_adc_6, cal_adc_15 FROM general_info WHERE id = ?', [$id])) ?: [];
+        if (!relay_can_view($id)) {
+            relay_forbidden('Нет доступа к этому устройству');
+        }
+        $g = mysqli_fetch_assoc(relay_q($connect, 'SELECT bat_type, cal_adc_6, cal_adc_15, cal_adc_19, cal_adc_26 FROM general_info WHERE id = ?', [$id])) ?: [];
+        $batType = relay_bat_type($g['bat_type'] ?? 12);
+        $bt = RELAY_BAT_TYPES[$batType];
+        $cal = ['lo' => $g[$bt['col_low']] ?? null, 'hi' => $g[$bt['col_high']] ?? null];
         $rows = relay_rows(relay_q($connect,
             "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$.bat_adc') AS UNSIGNED) AS adc
                FROM mqtt_messages
@@ -216,9 +262,10 @@ switch ($action) {
               ORDER BY id", [$id, $hours]));
         $points = [];
         foreach ($rows as $r) {
-            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['cal_adc_6'] ?? null, $cal['cal_adc_15'] ?? null)];
+            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['lo'], $cal['hi'], $batType)];
         }
-        relay_json(['points' => $points, 'calibrated' => isset($cal['cal_adc_6'], $cal['cal_adc_15']), 'hours' => $hours]);
+        relay_json(['points' => $points, 'calibrated' => isset($cal['lo'], $cal['hi']), 'hours' => $hours,
+                    'bat_type' => $batType, 'v_low' => $bt['low'], 'v_high' => $bt['high']]);
 
     case 'delete':
         $id = (int)($_POST['id'] ?? 0);
@@ -229,6 +276,7 @@ switch ($action) {
         relay_q($connect, 'DELETE FROM devices WHERE id = ?', [$id]);      // каскадом: relay_states, commands, device_last_update
         relay_q($connect, 'DELETE FROM general_info WHERE id = ?', [$id]);
         relay_q($connect, 'DELETE FROM device_events WHERE device_id = ?', [$id]);
+        @relay_q($connect, 'DELETE FROM panel_user_relays WHERE device_id = ?', [$id]);
         relay_json(['ok' => true, 'note' => $code === 0
             ? 'Доступ устройства к брокеру закрыт.'
             : "Не удалось закрыть доступ к брокеру автоматически ($out). Выполните на сервере: sudo relay-device del $id"]);

@@ -229,3 +229,52 @@ CREATE TABLE IF NOT EXISTS `panel_users` (
     `created_by` VARCHAR(64) DEFAULT NULL,
     `last_login_at` DATETIME DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.7: тип АКБ (12 В — калибровка по 6 и 15 В, 24 В — по 19 и 26 В),
+--       реле 4 как замок двери, права пользователей на отдельные реле,
+--       переадресация MQTT-сообщений между брокерами
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `bat_type` TINYINT(4) NOT NULL DEFAULT 12,
+    ADD COLUMN IF NOT EXISTS `relay4_lock` TINYINT(1) NOT NULL DEFAULT 0;
+
+-- роли: admin — всё; user — только реле, выданные администратором (просмотр или управление)
+ALTER TABLE `panel_users` MODIFY `role` ENUM('admin', 'operator', 'viewer', 'user') NOT NULL DEFAULT 'user';
+
+CREATE TABLE IF NOT EXISTS `panel_user_relays` (
+    `login` VARCHAR(64) NOT NULL,
+    `device_id` INT(11) NOT NULL,
+    `relay_num` TINYINT(4) NOT NULL,          -- 1–4; 5 — замок платы ver_5_1
+    `can_control` TINYINT(1) NOT NULL DEFAULT 0,  -- 0 — только видит, 1 — видит и управляет
+    PRIMARY KEY (`login`, `device_id`, `relay_num`),
+    INDEX `idx_device` (`device_id`),
+    CONSTRAINT `fk_pur_user` FOREIGN KEY (`login`) REFERENCES `panel_users` (`login`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- прежние роли «Оператор» и «Просмотр» → «Пользователь» с доступом ко всем реле (управление / просмотр)
+INSERT IGNORE INTO `panel_user_relays` (`login`, `device_id`, `relay_num`, `can_control`)
+SELECT u.`login`, g.`id`, n.`num`, (u.`role` = 'operator')
+  FROM `panel_users` u
+  JOIN `general_info` g
+  JOIN (SELECT 1 AS num UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5) n
+ WHERE u.`role` IN ('operator', 'viewer');
+UPDATE `panel_users` SET `role` = 'user' WHERE `role` IN ('operator', 'viewer');
+
+CREATE TABLE IF NOT EXISTS `mqtt_forwards` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL DEFAULT '',
+    `src_broker_id` INT(11) NOT NULL,
+    `topic_filter` VARCHAR(255) NOT NULL DEFAULT '#',
+    `dst_broker_id` INT(11) NOT NULL,
+    `dst_prefix` VARCHAR(100) NOT NULL DEFAULT '',   -- добавляется перед топиком: «site1/» + «stat» = «site1/stat»
+    `keep_retain` TINYINT(1) NOT NULL DEFAULT 1,
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+    `fwd_count` BIGINT NOT NULL DEFAULT 0,
+    `last_fwd_at` DATETIME DEFAULT NULL,
+    `last_error` VARCHAR(500) DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_fwd_src` FOREIGN KEY (`src_broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_fwd_dst` FOREIGN KEY (`dst_broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

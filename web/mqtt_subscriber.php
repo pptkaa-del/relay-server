@@ -153,10 +153,14 @@ function handleStat(array $d, bool $retained): void
         $changes[] = 'status'; $prev[] = (int)$current['status']; $new[] = $stat;
     }
     $relayText = [];
+    $lock4 = relay_relay4_lock($c, $id);   // реле 4 — замок: вкл — дверь закрыта, выкл — открыта
+    $doorName = fn($v) => [0 => 'открыта', 1 => 'закрыта', 2 => 'ошибка'][$v] ?? $v;
     for ($i = 1; $i <= 4; $i++) {
         if ($cur[$i] !== $r[$i]) {
             $changes[] = "relay_$i"; $prev[] = $cur[$i]; $new[] = $r[$i];
-            $relayText[] = "реле $i: " . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i]);
+            $relayText[] = $i === 4 && $lock4
+                ? 'дверь (замок, реле 4): ' . $doorName($cur[$i]) . ' → ' . $doorName($r[$i])
+                : "реле $i: " . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i]);
         }
     }
     $name = (string)$current['name'];
@@ -218,7 +222,7 @@ function handleRep(array $d): void
     writeLog("REP: устройство $id, cmd_id=$cmdId, " . ($ok ? 'success' : 'error'));
 
     if ($cmd) {
-        $label = relay_command_label((int)$cmd['command'], (int)$cmd['relay_num']);
+        $label = relay_command_label((int)$cmd['command'], (int)$cmd['relay_num'], relay_relay4_lock($c, $id));
         if ((int)$cmd['command'] === 5) {
             relay_event($c, $id, 'reboot', $ok ? 'Устройство приняло команду перезагрузки и перезапускается' : 'Устройство отклонило перезагрузку', $ok ? 'warning' : 'error', ['cmd_id' => $cmdId]);
         } elseif ((int)$cmd['command'] !== 4) {
@@ -366,15 +370,108 @@ function disconnectBroker(int $id): void
     $conns[$id]['client'] = null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Переадресация: сообщения брокера-источника по фильтру топиков        */
+/* публикуются в брокер-получатель (таблица mqtt_forwards)              */
+/* ------------------------------------------------------------------ */
+
+/** @var array<int, array> правила по id */
+$forwards = [];
+/** @var array<string, float> недавно переадресованные сообщения «брокер|топик|md5» — защита от петель A→B→A */
+$fwdRecent = [];
+/** @var array<int, array{n: int, err: ?string, at: ?string}> счётчики для записи в БД */
+$fwdStats = [];
+
+function syncForwards(): void
+{
+    global $forwards, $fwdStats;
+    // сохраняем накопленные счётчики
+    foreach ($fwdStats as $rid => $st) {
+        relay_q(db(), 'UPDATE mqtt_forwards SET fwd_count = fwd_count + ?, last_fwd_at = COALESCE(?, last_fwd_at), last_error = ?,
+                       updated_at = updated_at WHERE id = ?', [$st['n'], $st['at'], $st['err'], $rid]);
+    }
+    $fwdStats = [];
+    $res = @mysqli_query(db(), 'SELECT f.* FROM mqtt_forwards f JOIN mqtt_brokers s ON s.id = f.src_broker_id JOIN mqtt_brokers d ON d.id = f.dst_broker_id
+                                 WHERE f.enabled = 1 AND s.enabled = 1 AND d.enabled = 1');
+    $new = [];
+    foreach (relay_rows($res ?: null) as $f) {
+        $new[(int)$f['id']] = $f;
+    }
+    if (array_keys($new) !== array_keys($forwards)) {
+        writeLog('переадресация: правил ' . count($new));
+    }
+    $forwards = $new;
+}
+
+/** Фильтры, которые нужно дополнительно подписать на брокере-источнике ради переадресации */
+function forwardFilters(int $brokerId): array
+{
+    global $forwards;
+    $out = [];
+    foreach ($forwards as $f) {
+        if ((int)$f['src_broker_id'] === $brokerId) {
+            $out[] = (string)$f['topic_filter'];
+        }
+    }
+    sort($out);
+    return array_values(array_unique($out));
+}
+
+function forwardMessage(int $srcId, string $topic, string $message, bool $retained): void
+{
+    global $forwards, $fwdRecent, $fwdStats, $conns;
+    if (!$forwards || str_starts_with($topic, '$')) {
+        return;
+    }
+    $now = microtime(true);
+    $hash = md5($message);
+    // это копия, которую мы сами только что переслали в этот брокер, — дальше не отправляем
+    if (isset($fwdRecent["$srcId|$topic|$hash"]) && $now - $fwdRecent["$srcId|$topic|$hash"] < 10) {
+        return;
+    }
+    foreach ($forwards as $rid => $f) {
+        if ((int)$f['src_broker_id'] !== $srcId || !relay_topic_match((string)$f['topic_filter'], $topic)) {
+            continue;
+        }
+        $dst = (int)$f['dst_broker_id'];
+        $dstTopic = $f['dst_prefix'] . $topic;
+        $st = &$fwdStats[$rid];
+        $st ??= ['n' => 0, 'err' => null, 'at' => null];
+        $client = $conns[$dst]['client'] ?? null;
+        if ($client === null) {
+            $st['err'] = 'брокер-получатель не подключён';
+            unset($st);
+            continue;
+        }
+        try {
+            $fwdRecent["$dst|$dstTopic|$hash"] = $now;
+            $client->publish($dstTopic, $message, 1, $retained && (int)$f['keep_retain'] === 1);
+            $st['n']++;
+            $st['at'] = date('Y-m-d H:i:s');
+            $st['err'] = null;
+        } catch (Throwable $e) {
+            $st['err'] = mb_substr($e->getMessage(), 0, 500);
+            writeLog("переадресация #$rid → «{$conns[$dst]['cfg']['name']}» $dstTopic: " . $e->getMessage(), 'ERROR');
+        }
+        unset($st);
+    }
+    if (count($fwdRecent) > 2000) {
+        $fwdRecent = array_filter($fwdRecent, fn($t) => $now - $t < 10);
+    }
+}
+
 function syncBrokers(): void
 {
     global $conns;
+    syncForwards();
     $rows = relay_rows(relay_q(db(), 'SELECT * FROM mqtt_brokers'));
     $seen = [];
     foreach ($rows as $b) {
         $id = (int)$b['id'];
         $seen[$id] = true;
-        $hash = md5(json_encode([$b['host'], $b['port'], $b['use_tls'], $b['tls_verify'], $b['username'], $b['password'], $b['topics'], $b['enabled']]));
+        // при изменении фильтров переадресации брокер переподключается с новыми подписками
+        $hash = md5(json_encode([$b['host'], $b['port'], $b['use_tls'], $b['tls_verify'], $b['username'], $b['password'], $b['topics'], $b['enabled'],
+                                 forwardFilters($id)]));
         if (!(int)$b['enabled']) {
             if (isset($conns[$id])) {
                 disconnectBroker($id);
@@ -424,15 +521,28 @@ function connectBroker(int $id): void
         if ((int)$b['is_local'] === 1) {
             $topics[] = '$SYS/broker/log/N'; // попытки подключения незарегистрированных плат
         }
+        // свои подписки брокера (журнал и обработка) + фильтры переадресации (только пересылка)
+        $own = $topics;
+        $topics = relay_merge_filters(array_merge($topics, forwardFilters($id)));
         foreach ($topics as $t) {
-            $client->subscribe($t, function ($topic, $message, $retained) use ($id, $t) {
+            $client->subscribe($t, function ($topic, $message, $retained) use ($id, $t, $own) {
                 global $conns;
                 // php-mqtt сопоставляет «#» и с $SYS/… (по стандарту MQTT — не должно), из-за чего
                 // служебное сообщение пришло бы дважды: $SYS принимаем только от подписки на $SYS
                 if (str_starts_with($topic, '$') !== str_starts_with($t, '$')) {
                     return;
                 }
-                onMessage($conns[$id]['cfg'], $topic, $message, (bool)$retained);
+                foreach ($own as $o) {
+                    if (relay_topic_match($o, $topic)) {
+                        onMessage($conns[$id]['cfg'], $topic, $message, (bool)$retained);
+                        break;
+                    }
+                }
+                try {
+                    forwardMessage($id, $topic, $message, (bool)$retained);
+                } catch (Throwable $e) {
+                    writeLog('переадресация: ' . $e->getMessage(), 'ERROR');
+                }
             }, 1);
         }
         $conns[$id]['client'] = $client;

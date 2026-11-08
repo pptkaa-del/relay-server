@@ -22,8 +22,8 @@ layout_head('Пользователи', 'users', $login);
 <section class="card">
   <div class="table-wrap">
     <table class="tbl users-tbl">
-      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
-      <tbody id="users"><tr><td colspan="6" class="muted">Загрузка…</td></tr></tbody>
+      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
+      <tbody id="users"><tr><td colspan="7" class="muted">Загрузка…</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -32,16 +32,17 @@ layout_head('Пользователи', 'users', $login);
   <div class="card-head"><h2>Роли</h2></div>
   <div class="card-body">
     <dl class="kv">
-      <dt><span class="badge info">Администратор</span></dt><dd>всё, включая управление пользователями</dd>
-      <dt><span class="badge success">Оператор</span></dt><dd>управление реле и устройствами, добавление устройств, монитор, наклейки</dd>
-      <dt><span class="badge">Просмотр</span></dt><dd>только просмотр состояния и журналов, команды отправлять нельзя</dd>
+      <dt><span class="badge info">Администратор</span></dt><dd>всё: добавляет устройства и вносит их данные (названия, подписи реле, АКБ, замок),
+        монитор, переадресация MQTT, наклейки, пользователи</dd>
+      <dt><span class="badge success">Пользователь</span></dt><dd>видит только выданные ему реле; каждым реле — «просмотр» (видит состояние)
+        или «управление» (может включать и выключать). Перезагрузка устройства — если есть управление хотя бы одним его реле</dd>
     </dl>
     <p class="muted" style="margin:12px 0 0;font-size:13px">Пользователи с отметкой «создан при установке» хранятся на сервере и всегда администраторы.
       Их пароль меняется командой <span class="mono">sudo relay-device user-add ЛОГИН</span>.</p>
   </div>
 </section>
 
-<dialog class="modal" id="user-dlg">
+<dialog class="modal wide" id="user-dlg">
   <form method="dialog" id="user-form">
     <div class="modal-head"><h2 id="user-title">Новый пользователь</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
     <div class="modal-body">
@@ -50,7 +51,7 @@ layout_head('Пользователи', 'users', $login);
           title="Латиница, цифры, _ . @ -" placeholder="ivanov"></label>
         <label class="field">Имя<input class="input" name="name" maxlength="100" placeholder="Иван Иванов"></label>
         <label class="field">Роль<select class="input" name="role">
-          <option value="operator">Оператор</option><option value="viewer">Просмотр</option><option value="admin">Администратор</option></select></label>
+          <option value="user">Пользователь</option><option value="admin">Администратор</option></select></label>
         <label class="field" id="f-enabled">Доступ<select class="input" name="enabled"><option value="1">Разрешён</option><option value="0">Отключён</option></select></label>
         <div class="field full">
           <label for="u-pass" id="pass-label">Пароль</label>
@@ -59,6 +60,17 @@ layout_head('Пользователи', 'users', $login);
           <span class="hint" id="pass-hint"></span>
         </div>
       </div>
+      <fieldset class="fieldset" id="perm-box">
+        <legend>Доступ к реле</legend>
+        <div class="perm-tools">
+          <span class="perm-summary" id="perm-summary"></span><span style="flex:1"></span>
+          <span class="muted" style="font-size:12.5px">Всем реле:</span>
+          <button class="btn sm" type="button" data-all-perm="">Нет</button>
+          <button class="btn sm" type="button" data-all-perm="view">Просмотр</button>
+          <button class="btn sm" type="button" data-all-perm="control">Управление</button>
+        </div>
+        <div class="perm-list" id="perm-list"></div>
+      </fieldset>
       <div class="result" id="user-result"></div>
     </div>
     <div class="modal-foot">

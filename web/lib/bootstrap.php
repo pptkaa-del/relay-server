@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.5';
+const RELAY_VERSION       = '3.6';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -122,10 +122,11 @@ function relay_session_start(): void
 
 /** Роли пользователей панели */
 const RELAY_ROLES = [
-    'admin'    => 'Администратор',   // всё, включая управление пользователями
-    'operator' => 'Оператор',        // управление устройствами, без управления пользователями
-    'viewer'   => 'Просмотр',        // только просмотр, команды запрещены
+    'admin' => 'Администратор',   // всё: устройства, их данные, монитор, наклейки, пользователи
+    'user'  => 'Пользователь',    // только реле, выданные администратором (просмотр или управление)
 ];
+/** Страницы и API, доступные пользователю (не администратору). Остальное — только администратору. */
+const RELAY_USER_SCRIPTS = ['/index.php', '/device.php', '/api/devices.php', '/api/device_log.php', '/api/users.php'];
 const RELAY_LOGIN_RE = '/^[A-Za-z0-9_.@-]{1,64}$/';
 const RELAY_MIN_PASS = 6;
 
@@ -181,7 +182,7 @@ function relay_user_info(string $login, bool $withHash = false): ?array
     if (!$r) {
         return null;
     }
-    $u = ['login' => $r['login'], 'name' => (string)$r['name'], 'role' => isset(RELAY_ROLES[$r['role']]) ? $r['role'] : 'viewer',
+    $u = ['login' => $r['login'], 'name' => (string)$r['name'], 'role' => $r['role'] === 'admin' ? 'admin' : 'user',
           'source' => 'db', 'enabled' => (bool)$r['enabled'], 'pwv' => substr(sha1($r['pass_hash']), 0, 16)];
     if ($withHash) {
         $u['hash'] = $r['pass_hash'];
@@ -228,18 +229,103 @@ function relay_current_user(): ?string
 
 function relay_current_role(): string
 {
-    return relay_current_user_info()['role'] ?? 'viewer';
+    return relay_current_user_info()['role'] ?? 'user';
+}
+
+function relay_is_admin(): bool
+{
+    return relay_current_role() === 'admin';
+}
+
+/** Отказ в доступе: JSON для API, страница для браузера. */
+function relay_forbidden(string $msg = 'Недостаточно прав: раздел доступен только администратору'): never
+{
+    $script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+    if (str_contains($script, '/api/') || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET'
+        || ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+        relay_json(['error' => $msg], 403);
+    }
+    http_response_code(403);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Нет доступа</title>'
+        . '<link rel="stylesheet" href="' . h(asset_url('app.css')) . '"><div class="auth"><div class="card auth-card"><h2>Нет доступа</h2>'
+        . '<p class="muted">' . h($msg) . '.</p><p><a class="btn" href="/index.php">К устройствам</a></p></div></div>';
+    exit;
+}
+
+/**
+ * Права пользователя на реле: null — администратор (всё), иначе [device_id][relay_num] => true (управление) / false (просмотр).
+ * relay_num 1–4 — реле, 5 — замок платы ver_5_1.
+ */
+function relay_user_perms(): ?array
+{
+    static $cache = false;
+    if ($cache !== false) {
+        return $cache;
+    }
+    if (relay_is_admin()) {
+        return $cache = null;
+    }
+    $perms = [];
+    $db = relay_auth_db();
+    $st = $db ? mysqli_prepare($db, 'SELECT device_id, relay_num, can_control FROM panel_user_relays WHERE login = ?') : false;
+    if ($st) {
+        $login = (string)relay_current_user();
+        mysqli_stmt_bind_param($st, 's', $login);
+        $res = mysqli_stmt_execute($st) ? mysqli_stmt_get_result($st) : false;
+        while ($res && ($r = mysqli_fetch_assoc($res))) {
+            $perms[(int)$r['device_id']][(int)$r['relay_num']] = (bool)$r['can_control'];
+        }
+    }
+    return $cache = $perms;
+}
+
+/** Видит ли пользователь устройство (хотя бы одно реле) или конкретное реле. */
+function relay_can_view(int $deviceId, ?int $relay = null): bool
+{
+    $p = relay_user_perms();
+    if ($p === null) {
+        return true;
+    }
+    return $relay === null ? !empty($p[$deviceId]) : isset($p[$deviceId][$relay]);
+}
+
+function relay_can_control(int $deviceId, int $relay): bool
+{
+    $p = relay_user_perms();
+    return $p === null || !empty($p[$deviceId][$relay]);
+}
+
+/**
+ * Проверка прав на команду. Реле 1–5 — управление этим реле; все реле (0) — управление реле 1–4;
+ * запрос статуса — просмотр устройства; перезагрузка — управление хотя бы одним реле устройства.
+ */
+function relay_check_command_access(int $deviceId, int $command, int $relay): void
+{
+    if (relay_is_admin()) {
+        return;
+    }
+    $p = relay_user_perms()[$deviceId] ?? [];
+    $ok = match (true) {
+        $command === 4 => (bool)$p,
+        $command === 5 => in_array(true, $p, true),
+        $relay === 0 => !empty($p[1]) && !empty($p[2]) && !empty($p[3]) && !empty($p[4]),
+        default => !empty($p[$relay]),
+    };
+    if (!$ok) {
+        relay_forbidden('Недостаточно прав для этой команды');
+    }
 }
 
 /** Требует входа. Для AJAX/POST отдаёт 401, для обычных страниц — редирект на login.php.
- *  Пользователю «Просмотр» запрещены все POST-запросы (команды, изменения), кроме смены своего пароля. */
+ *  Пользователю (не администратору) доступны только RELAY_USER_SCRIPTS, права на реле проверяет каждый API. */
 function relay_require_auth(): string
 {
     $login = relay_current_user();
     if ($login !== null) {
-        if (relay_current_role() === 'viewer' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST'
-            && !(str_ends_with((string)($_SERVER['SCRIPT_NAME'] ?? ''), '/api/users.php') && ($_POST['action'] ?? '') === 'passwd')) {
-            relay_json(['error' => 'Недостаточно прав: у вас доступ только для просмотра'], 403);
+        $script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+        if (!relay_is_admin() && !in_array($script, RELAY_USER_SCRIPTS, true) && !str_starts_with($script, '/aut/')) {
+            relay_forbidden();
         }
         return $login;
     }
@@ -319,19 +405,33 @@ function relay_event(mysqli $db, int $deviceId, string $type, string $message, s
 /* Напряжение АКБ                                                      */
 /* ------------------------------------------------------------------ */
 
-const RELAY_BAT_V_LOW  = 6.0;  // опорные точки калибровки: АЦП при 6 В и при 15 В
+/**
+ * Типы АКБ: опорные точки калибровки (АЦП при low и при high вольтах), столбцы general_info с этими АЦП
+ * и пороги цвета (ниже bad — красный, ниже warn — жёлтый).
+ */
+const RELAY_BAT_TYPES = [
+    12 => ['low' => 6.0,  'high' => 15.0, 'col_low' => 'cal_adc_6',  'col_high' => 'cal_adc_15', 'bad' => 11.5, 'warn' => 12.2],
+    24 => ['low' => 19.0, 'high' => 26.0, 'col_low' => 'cal_adc_19', 'col_high' => 'cal_adc_26', 'bad' => 23.0, 'warn' => 24.4],
+];
+const RELAY_BAT_V_LOW  = 6.0;  // АКБ 12 В (по умолчанию)
 const RELAY_BAT_V_HIGH = 15.0;
 
+function relay_bat_type($t): int
+{
+    return (int)$t === 24 ? 24 : 12;
+}
+
 /**
- * Пересчёт АЦП в вольты по двум точкам калибровки платы (АЦП при 6 В и при 15 В).
+ * Пересчёт АЦП в вольты по двум точкам калибровки устройства: АКБ 12 В — АЦП при 6 В и 15 В, 24 В — при 19 В и 26 В.
  * null — нет данных или калибровки.
  */
-function relay_battery_voltage($adc, $adcLow, $adcHigh): ?float
+function relay_battery_voltage($adc, $adcLow, $adcHigh, int $batType = 12): ?float
 {
     if ($adc === null || $adcLow === null || $adcHigh === null || (int)$adcLow === (int)$adcHigh) {
         return null;
     }
-    $v = RELAY_BAT_V_LOW + ((int)$adc - (int)$adcLow) * (RELAY_BAT_V_HIGH - RELAY_BAT_V_LOW) / ((int)$adcHigh - (int)$adcLow);
+    $t = RELAY_BAT_TYPES[relay_bat_type($batType)];
+    $v = $t['low'] + ((int)$adc - (int)$adcLow) * ($t['high'] - $t['low']) / ((int)$adcHigh - (int)$adcLow);
     return round(max(0.0, $v), 2);
 }
 
@@ -409,6 +509,54 @@ function relay_publish(array $broker, string $topic, string $payload, int $qos =
  * Разбирает список подписок «stat, rep com/#» (через запятую, пробел или перевод строки).
  * @return array{0: string[], 1: string[]} [верные фильтры, ошибки]
  */
+/** Подходит ли топик под фильтр MQTT (+ — один уровень, # — всё дальше; $SYS не совпадает с # и +). */
+function relay_topic_match(string $filter, string $topic): bool
+{
+    if ($filter === $topic) {
+        return true;
+    }
+    if (str_starts_with($topic, '$') && !str_starts_with($filter, '$')) {
+        return false;
+    }
+    $f = explode('/', $filter);
+    $t = explode('/', $topic);
+    foreach ($f as $i => $part) {
+        if ($part === '#') {
+            return true;
+        }
+        if (!array_key_exists($i, $t) || ($part !== '+' && $part !== $t[$i])) {
+            return false;
+        }
+    }
+    return count($f) === count($t);
+}
+
+/** Подписки без пересечений: фильтр, полностью покрытый другим (stat ⊂ #, com/1 ⊂ com/#), убирается — иначе сообщения дублировались бы. */
+function relay_merge_filters(array $filters): array
+{
+    $filters = array_values(array_unique($filters));
+    $out = [];
+    foreach ($filters as $i => $a) {
+        $covered = false;
+        foreach ($filters as $j => $b) {
+            if ($i !== $j && $a !== $b && str_ends_with($b, '#') && !str_contains($a, '#') && relay_topic_match($b, str_replace('+', 'x', $a))
+                && !(str_starts_with($a, '$') && !str_starts_with($b, '$'))) {
+                $covered = true;
+                break;
+            }
+            if ($i !== $j && str_ends_with($a, '#') && str_ends_with($b, '#') && $a !== $b
+                && str_starts_with(substr($a, 0, -1), substr($b, 0, -1))) {
+                $covered = true; // com/1/# ⊂ com/#
+                break;
+            }
+        }
+        if (!$covered) {
+            $out[] = $a;
+        }
+    }
+    return $out;
+}
+
 function relay_parse_topics(string $s): array
 {
     $ok = $err = [];
@@ -544,8 +692,26 @@ function relay_next_cmd_id(mysqli $db): int
 
 const RELAY_LOCK = 5; // замок платы ver_5_1 — «реле 5» в командах 1–3
 
-function relay_command_label(int $command, int $relay): string
+/** Реле 4 устройства управляет замком двери (настройка «Реле 4 — замок»). */
+function relay_relay4_lock(mysqli $db, int $deviceId): bool
 {
+    static $cache = [];   // [device_id => [значение, время]] — подписчик работает долго, поэтому кэш на 30 с
+    if (!isset($cache[$deviceId]) || time() - $cache[$deviceId][1] > 30) {
+        $res = relay_q($db, 'SELECT relay4_lock FROM general_info WHERE id = ?', [$deviceId]);
+        $r = $res instanceof mysqli_result ? mysqli_fetch_row($res) : null;
+        $cache[$deviceId] = [$r !== null && (int)$r[0] === 1, time()];
+    }
+    return $cache[$deviceId][0];
+}
+
+/** Названия команд замку на реле 4: включено — закрыто, выключено — открыто. */
+const RELAY4_LOCK_COMMANDS = [1 => 'Замок: закрыть', 2 => 'Замок: открыть надолго', 3 => 'Замок: открыть'];
+
+function relay_command_label(int $command, int $relay, bool $relay4Lock = false): string
+{
+    if ($relay === 4 && $relay4Lock && isset(RELAY4_LOCK_COMMANDS[$command])) {
+        return RELAY4_LOCK_COMMANDS[$command];
+    }
     if ($relay === RELAY_LOCK) {
         return [1 => 'замок: подать питание', 2 => 'замок: снять питание', 3 => 'замок: открыть (импульс)'][$command] ?? "замок: команда $command";
     }
@@ -596,7 +762,7 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
     $retain = in_array($command, [1, 2], true) && $relay !== RELAY_LOCK;
     if ($local) {
         // событие пишем до отправки: плата может ответить раньше, чем завершится publish
-        relay_event($db, $deviceId, $command === 5 ? 'reboot' : 'command', 'Команда: ' . relay_command_label($command, $relay), 'info',
+        relay_event($db, $deviceId, $command === 5 ? 'reboot' : 'command', 'Команда: ' . relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId)), 'info',
             ['cmd_id' => $cmdId, 'command' => $command, 'relay' => $relay], $user);
     }
     // журнал пишем до отправки: сторонний брокер вернёт копию сообщения (подписка на #) раньше,
@@ -609,7 +775,7 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
         relay_q($db, 'DELETE FROM mqtt_messages WHERE id = ?', [$logId]);
         if ($local) {
             relay_q($db, "UPDATE commands SET status = 'error' WHERE cmd_id = ? AND status = 'pending'", [$cmdId]);
-            relay_event($db, $deviceId, 'command', relay_command_label($command, $relay) . ' — ошибка отправки: ' . $e->getMessage(), 'error', ['cmd_id' => $cmdId], $user);
+            relay_event($db, $deviceId, 'command', relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId)) . ' — ошибка отправки: ' . $e->getMessage(), 'error', ['cmd_id' => $cmdId], $user);
         }
         throw new RuntimeException('Ошибка MQTT: ' . $e->getMessage());
     }

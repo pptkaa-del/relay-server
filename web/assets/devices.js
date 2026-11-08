@@ -36,8 +36,12 @@
   }
   window.addEventListener('hashchange', () => { selected = selFromHash(); render(); });
 
-  const relayBadge = st => st == null ? '<span class="badge">нет данных</span>'
+  // реле 4 — замок: включено — дверь закрыта (зелёный), выключено — открыта (жёлтый)
+  const relayBadge = (st, lock = false) => st == null ? '<span class="badge">нет данных</span>'
+    : lock ? `<span class="badge ${st === 1 ? 'success' : 'warning'}">${App.LOCK4_STATE[st]}</span>`
     : `<span class="badge ${st === 1 ? 'success' : st === 2 ? 'warning' : ''}">${App.RSTATE[st]}</span>`;
+  const relayStateText = r => r.state == null ? 'нет данных' : r.lock ? App.LOCK4_STATE[r.state] : App.RSTATE[r.state];
+  const viewOnly = '<span class="muted ro-note" title="Администратор выдал только просмотр">только просмотр</span>';
   const canSend = d => d.registered && d.state !== 'never';
   const metaHtml = d => {
     const seen = d.last_data_ts;
@@ -52,7 +56,7 @@
   // список плат слева
   function sideHtml(d) {
     const on = d.relays.filter(r => r.state === 1).length;
-    const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}" title="${esc(r.name)}: ${r.state == null ? 'нет данных' : App.RSTATE[r.state]}"></i>`).join('');
+    const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
       <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}</span><span>вкл ${on}/${d.relays.length}</span>
@@ -70,11 +74,15 @@
           ${stateBadge(d.state)}<span class="dev-meta ov-meta">${metaHtml(d)}</span></div></td></tr>`
         + d.relays.map(r => {
           const key = d.id + ':' + r.num, cls = r.state === 1 ? 'on' : r.state === 2 ? 'err' : '';
-          return `<tr class="ov-relay"><td><span class="ov-rname" title="${esc(r.name)}">${esc(r.name)}</span> <span class="muted ov-rnum">реле ${r.num}</span></td>
-            <td>${relayBadge(r.state)}</td>
+          const ctl = !r.control ? viewOnly
+            : r.lock ? `<span class="btn-row nowrap"><button class="btn sm primary" data-id="${d.id}" data-c="3" data-r="4" ${dis || busy.has(key) ? 'disabled' : ''}>Открыть</button>
+                <button class="btn sm" data-id="${d.id}" data-c="1" data-r="4" ${dis || busy.has(key) ? 'disabled' : ''}>Закрыть</button></span>`
+            : `<button class="switch ${cls} ${busy.has(key) ? 'busy' : ''}" data-id="${d.id}" data-relay="${r.num}" data-state="${r.state ?? ''}" ${dis ? 'disabled' : ''}
+              aria-label="${esc(r.name)}" title="${dis ? 'Устройство ещё не выходило на связь' : d.online ? (r.state === 1 ? 'Выключить' : 'Включить') : 'Устройство не на связи — команда выполнится при подключении'}"></button>`;
+          return `<tr class="ov-relay"><td><span class="ov-rname" title="${esc(r.name)}">${esc(r.name)}</span> <span class="muted ov-rnum">${r.lock ? 'замок · ' : ''}реле ${r.num}</span></td>
+            <td>${relayBadge(r.state, r.lock)}</td>
             <td class="ov-ts muted">${r.ts ? fmtTime(r.ts) : '—'}</td>
-            <td class="ov-sw"><button class="switch ${cls} ${busy.has(key) ? 'busy' : ''}" data-id="${d.id}" data-relay="${r.num}" data-state="${r.state ?? ''}" ${dis ? 'disabled' : ''}
-              aria-label="${esc(r.name)}" title="${dis ? 'Устройство ещё не выходило на связь' : d.online ? (r.state === 1 ? 'Выключить' : 'Включить') : 'Устройство не на связи — команда выполнится при подключении'}"></button></td></tr>`;
+            <td class="ov-sw">${ctl}</td></tr>`;
         }).join('');
     }).join('');
     return `<section class="card">
@@ -89,22 +97,28 @@
     const dis = !canSend(d) ? 'disabled' : '';
     const relays = d.relays.map(r => {
       const b = n => busy.has(d.id + ':' + r.num) || dis ? 'disabled' : '';
-      return `<div class="relay-card">
-        <div class="relay-card-top"><span class="relay-card-name" title="${esc(r.name)}">${esc(r.name)}</span>${relayBadge(r.state)}</div>
-        <div class="muted" style="font-size:12px">Реле ${r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
-        <div class="btn-row">
+      const buttons = !r.control ? `<div class="ro-box">${viewOnly}</div>`
+        : r.lock ? `<div class="btn-row lock-btns">
+          <button class="btn sm primary" data-c="3" data-r="4" ${b(3)} title="Кратковременно открыть замок">Открыть</button>
+          <button class="btn sm ok" data-c="1" data-r="4" ${b(1)}>Закрыть</button>
+          <button class="btn sm" data-c="2" data-r="4" ${b(2)} title="Оставить дверь открытой до команды «Закрыть»">Открыть надолго</button></div>`
+        : `<div class="btn-row">
           <button class="btn sm ok" data-c="1" data-r="${r.num}" ${b(1)}>Вкл</button>
           <button class="btn sm bad" data-c="2" data-r="${r.num}" ${b(2)}>Выкл</button>
-          <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button>
-        </div></div>`;
+          <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button></div>`;
+      return `<div class="relay-card${r.lock ? ' is-lock' : ''}">
+        <div class="relay-card-top"><span class="relay-card-name" title="${esc(r.name)}">${esc(r.name)}</span>${relayBadge(r.state, r.lock)}</div>
+        <div class="muted" style="font-size:12px">${r.lock ? 'Замок · реле 4' : 'Реле ' + r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
+        ${buttons}</div>`;
     }).join('');
-    const lock = d.door_state != null ? `<div class="lock-row">
+    const lockDis = dis || d.lock_access !== 'control' ? 'disabled' : '';
+    const lock = d.door_state != null && d.lock_access ? `<div class="lock-row">
         <span>Дверь: ${d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</span>
         <span>Замок: ${d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : '<span class="badge">обесточен</span>'}</span>
         <span class="spacer"></span>
-        <button class="btn sm primary" data-c="3" data-r="5" ${dis}>Открыть замок</button>
-        <button class="btn sm" data-c="1" data-r="5" ${dis}>Подать питание</button>
-        <button class="btn sm" data-c="2" data-r="5" ${dis}>Снять питание</button></div>` : '';
+        ${d.lock_access === 'control' ? `<button class="btn sm primary" data-c="3" data-r="5" ${lockDis}>Открыть замок</button>
+        <button class="btn sm" data-c="1" data-r="5" ${lockDis}>Подать питание</button>
+        <button class="btn sm" data-c="2" data-r="5" ${lockDis}>Снять питание</button>` : viewOnly}</div>` : '';
     const note = d.state === 'never' ? 'Устройство ещё не выходило на связь.' : !d.online ? 'Устройство не на связи: команды выполнятся при подключении.' : '';
     return `<section class="card dev-panel state-${d.state}">
       <div class="card-head">
@@ -122,7 +136,7 @@
         <a class="btn sm" href="/device.php?id=${d.id}">Подробнее: журнал, АКБ, настройки</a>
         <span class="spacer"></span>
         <button class="btn sm ghost" data-cmd="4" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.refresh}<span class="hide-narrow">Запросить статус</span></button>
-        <button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>
+        ${d.can_reboot ? `<button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>` : ''}
       </div></section>`;
   }
 
@@ -180,8 +194,9 @@
     if (relay) { busy.add(key); render(); } else if (btn) btn.disabled = true;
     const done = () => { busy.delete(key); load().catch(() => {}); };
     try {
+      const lock4 = relay === 4 && d.relay4_lock;
       await sendCommand({ url: '/api/devices.php', params: { action: 'command', id, command, relay }, statusUrl: '/api/devices.php',
-        statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, relay)}`, onDone: done });
+        statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, relay, lock4)}`, onDone: done, quiet: lock4 });
     } catch (er) { busy.delete(key); render(); toast(er.message, 'err'); }
     finally { if (!relay && btn) btn.disabled = false; }
   }
@@ -195,15 +210,17 @@
       return command(+sw.dataset.id, sw.dataset.state === '1' ? 2 : 1, +sw.dataset.relay);
     }
     const rb = e.target.closest('[data-c][data-r]');
-    if (rb && selected) return command(selected, +rb.dataset.c, +rb.dataset.r);
+    if (rb && !rb.disabled) return command(+(rb.dataset.id || selected), +rb.dataset.c, +rb.dataset.r);
     const cb = e.target.closest('[data-cmd]');
     if (cb) return command(+cb.dataset.id, +cb.dataset.cmd, 0, cb);
   });
 
   /* ---------- Добавление платы ---------- */
   const addDlg = $('#add'), addForm = $('#add-form'), F = k => addForm.elements[k];
+  // подписи полей калибровки по типу АКБ: 12 В — АЦП при 6 и 15 В, 24 В — при 19 и 26 В
+  App.bindBatType(addForm);
   function openAdd(prefillId) {
-    addForm.reset(); $('#add-result').textContent = ''; $('#add-result').className = 'result';
+    addForm.reset(); addForm.dispatchEvent(new Event('bat-type')); $('#add-result').textContent = ''; $('#add-result').className = 'result';
     if (prefillId) F('id').value = prefillId;
     addDlg.showModal(); (prefillId ? F('name') : F('id')).focus();
   }
@@ -214,7 +231,9 @@
   if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
 
   /* ---------- Незарегистрированные платы ---------- */
+  const isAdmin = document.body.classList.contains('role-admin');
   async function loadPending() {
+    if (!isAdmin) return; // незарегистрированные устройства видит только администратор
     const list = (await api('/api/devices.php', { action: 'pending' })).pending;
     $('#pending').classList.toggle('hidden', !list.length);
     $('#pending-list').innerHTML = list.map(p => `<div class="pending-row">
@@ -234,7 +253,8 @@
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'cal_adc_6', 'cal_adc_15']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = F(k).value.trim();
+    p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую устройство в брокере…';
     try {

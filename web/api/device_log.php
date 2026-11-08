@@ -17,6 +17,13 @@ $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to'] ?? '') ? $_GET['to'] . ' 2
 if ($id <= 0) {
     relay_json(['error' => 'Не указано устройство'], 400);
 }
+// пользователь видит журналы только своих устройств; MQTT-сообщения (в них все реле) — только администратор
+if (!relay_can_view($id)) {
+    relay_forbidden('Нет доступа к этому устройству');
+}
+if ($kind === 'messages' && !relay_is_admin()) {
+    relay_forbidden('Журнал MQTT-сообщений доступен только администратору');
+}
 
 $where = [];
 $params = [];
@@ -43,6 +50,10 @@ switch ($kind) {
     case 'commands':
         $add('device_id = ?', $id);
         $before && $add('cmd_id < ?', $before);
+        if (!relay_is_admin()) { // только команды своим реле, запросы статуса и перезагрузки
+            $mine = array_map('intval', array_keys(relay_user_perms()[$id] ?? []));
+            $where[] = '(command IN (4, 5) OR relay_num IN (' . ($mine ? implode(',', $mine) : '-1') . '))';
+        }
         $from && $add('created_at >= ?', $from);
         $to && $add('created_at <= ?', $to);
         $sql = 'SELECT cmd_id AS id, created_at AS ts, command, relay_num, status, sent_at, confirmed_at FROM commands WHERE ' . implode(' AND ', $where) . " ORDER BY cmd_id DESC LIMIT $limit";
@@ -60,7 +71,7 @@ foreach ($rows as &$r) {
         $r['retained'] = (bool)$r['retained'];
     }
     if ($kind === 'commands') {
-        $r['label'] = relay_command_label((int)$r['command'], (int)$r['relay_num']);
+        $r['label'] = relay_command_label((int)$r['command'], (int)$r['relay_num'], relay_relay4_lock($connect, $id));
     }
 }
 unset($r);
