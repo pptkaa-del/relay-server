@@ -45,7 +45,6 @@ function layout_head(string $title, string $active, string $login): void
       <div class="menu-pop">
         <div class="menu-user"><?= h($login) ?><small><?= h(RELAY_ROLES[$role] ?? '') ?></small></div>
         <button type="button" id="pw-open">Сменить пароль</button>
-        <?php if ($role === 'admin'): ?><a href="/legacy.php">Классическая панель</a><?php endif; ?>
         <button type="button" id="theme-toggle">Сменить тему</button>
         <a href="/aut/verificat.php?aut=finish">Выйти</a>
       </div>
