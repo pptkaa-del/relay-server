@@ -11,6 +11,7 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
+ *   POST action=ack_break_in id       — сбросить тревогу «взлом двери» (администратор или управляющий замком)
  *
  * Администратор видит всё. Пользователь — только выданные ему реле (panel_user_relays): list/get/battery
  * отдают только их, command проверяет право управления. add/update/delete/pending — только администратор.
@@ -19,11 +20,40 @@
 require __DIR__ . '/../conectbd.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
 if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore'], true) && !relay_is_admin()) {
     relay_forbidden('Добавлять устройства и изменять их данные может только администратор');
+}
+
+/** Отключённые реле из формы (relay1_off … relay4_off = 1) → битовая маска */
+function disabled_from_post(): int
+{
+    $m = 0;
+    for ($i = 1; $i <= 4; $i++) {
+        if (($_POST["relay{$i}_off"] ?? '0') === '1') {
+            $m |= 1 << ($i - 1);
+        }
+    }
+    return $m;
+}
+
+/** Координаты «55.7558, 37.6173» (также «55.7558 37.6173», «55,7558; 37,6173») → [широта, долгота] или null */
+function parse_coords(string $s): ?array
+{
+    $s = trim($s);
+    if ($s === '') {
+        return null;
+    }
+    if (str_contains($s, ';') || preg_match('/^-?\d+,\d+\s+-?\d+,\d+$/', $s)) {
+        $s = str_replace(',', '.', $s); // десятичная запятая
+    }
+    if (!preg_match_all('/-?\d+(?:\.\d+)?/', $s, $m) || count($m[0]) !== 2) {
+        return null;
+    }
+    [$lat, $lon] = array_map('floatval', $m[0]);
+    return abs($lat) <= 90 && abs($lon) <= 180 && !($lat == 0 && $lon == 0) ? [$lat, $lon] : null;
 }
 
 /** Тип АКБ и калибровка из формы → [bat_type, столбец_low => АЦП, столбец_high => АЦП] */
@@ -52,6 +82,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
                COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
+               COALESCE(g.relays_disabled, 0) AS relays_disabled, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
@@ -80,8 +111,16 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         }
         $d['id'] = $id;
         $d['relay4_lock'] = (int)$d['relay4_lock'] === 1;
+        $mask = (int)$d['relays_disabled'];
+        $d['relays_disabled'] = array_values(array_filter([1, 2, 3, 4], fn($i) => ($mask >> ($i - 1)) & 1));
+        $d['relay_names'] = [];
         $d['relays'] = [];
         for ($i = 1; $i <= 4; $i++) {
+            $d['relay_names'][$i] = ($d["name_reley_$i"] ?? '') ?: "Реле $i";
+            if (($mask >> ($i - 1)) & 1) {
+                unset($d["name_reley_$i"]);
+                continue; // отключённое реле не показывается и не управляется
+            }
             if ($admin || isset($perms[$id][$i])) {
                 $d['relays'][] = ['num' => $i, 'name' => ($d["name_reley_$i"] ?? '') ?: "Реле $i",
                                   'state' => $relays[$id][$i]['state'] ?? null, 'ts' => $relays[$id][$i]['ts'] ?? null,
@@ -106,7 +145,16 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         // что можно делать с устройством целиком
         $d['can_edit'] = $admin;
         $d['can_reboot'] = $admin || in_array(true, $perms[$id], true);
-        $d['can_all'] = $admin || (!empty($perms[$id][1]) && !empty($perms[$id][2]) && !empty($perms[$id][3]) && !empty($perms[$id][4]));
+        $d['can_all'] = $mask === 0
+            && ($admin || (!empty($perms[$id][1]) && !empty($perms[$id][2]) && !empty($perms[$id][3]) && !empty($perms[$id][4])));
+        // дверь: замок на реле 4 (вкл — закрыта) или геркон платы ver_5_1
+        $r4 = $relays[$id][4]['state'] ?? null;
+        $d['door_open'] = $d['relay4_lock'] ? ($r4 === null ? null : $r4 === 0)
+            : ($d['door_state'] === null ? null : (int)$d['door_state'] === 1);
+        $d['break_in'] = $d['break_in_ts'] ? ['ts' => (int)$d['break_in_ts'], 'source' => $d['break_in_source']] : null;
+        $d['can_ack'] = $admin || !empty($perms[$id][4]) || !empty($perms[$id][RELAY_LOCK]);
+        unset($d['break_in_ts'], $d['break_in_source']);
+        $d['geo'] = parse_coords((string)$d['coordinates']);
         $d['registered'] = (bool)$d['registered'];
         $fresh = $d['last_seen_ts'] !== null && $now - $d['last_seen_ts'] <= RELAY_OFFLINE_AFTER;
         $d['online'] = $fresh && $d['status'] !== 0;
@@ -164,6 +212,7 @@ switch ($action) {
         $name = $f('name') ?: "Устройство $id";
         [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
         $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
+        $off = disabled_from_post();
         relay_q($connect, 'INSERT INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            ON DUPLICATE KEY UPDATE name_obj = VALUES(name_obj), address = VALUES(address), coordinates = VALUES(coordinates),
@@ -171,15 +220,25 @@ switch ($action) {
                              name_reley_3 = VALUES(name_reley_3), name_reley_4 = VALUES(name_reley_4)',
             [$id, $name, $f('address', 300), $f('coordinates', 100),
              $f('relay1', 60) ?: 'Реле 1', $f('relay2', 60) ?: 'Реле 2', $f('relay3', 60) ?: 'Реле 3', $f('relay4', 60) ?: 'Реле 4']);
-        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$batType, $lock4, $calLo, $calHi, $id]);
+        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
+            [$batType, $lock4, $off, $calLo, $calHi, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
         relay_event($connect, $id, 'info', 'Изменены данные устройства: название, адрес, подписи реле, АКБ ' . $batType . ' В'
-            . ($lock4 ? ', реле 4 — замок' : ''), 'info', null, $login);
+            . ($lock4 ? ', реле 4 — замок' : '') . ($off ? ', отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : ''),
+            'info', null, $login);
         relay_json(['ok' => true]);
 
     case 'command':
         relay_check_command_access((int)($_POST['id'] ?? 0), (int)($_POST['command'] ?? 0), (int)($_POST['relay'] ?? 0));
+        // отключённым реле команды не отправляются (и «всем реле», если хоть одно отключено)
+        $cmdRelay = (int)($_POST['relay'] ?? 0);
+        $cmdCode = (int)($_POST['command'] ?? 0);
+        $offRes = relay_q($connect, 'SELECT relays_disabled FROM general_info WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
+        $offRow = $offRes instanceof mysqli_result ? mysqli_fetch_row($offRes) : null;
+        $offMask = (int)($offRow[0] ?? 0);
+        if ($cmdCode <= 3 && (($cmdRelay >= 1 && $cmdRelay <= 4 && (($offMask >> ($cmdRelay - 1)) & 1)) || ($cmdRelay === 0 && $offMask))) {
+            relay_json(['error' => $cmdRelay ? "Реле $cmdRelay отключено в настройках устройства" : 'Есть отключённые реле — команда «всем реле» недоступна'], 400);
+        }
         try {
             $cmdId = relay_send_command($connect, (int)($_POST['id'] ?? 0), (int)($_POST['command'] ?? 0), (int)($_POST['relay'] ?? 0), $login);
             relay_json(['ok' => true, 'cmd_id' => $cmdId]);
@@ -205,6 +264,7 @@ switch ($action) {
         $address = $f('address', 300);
         [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
         $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
+        $off = disabled_from_post();
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
         if ($code !== 0) {
@@ -218,13 +278,23 @@ switch ($action) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
         relay_q($connect, "UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  bat_type = ?, relay4_lock = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $calLo, $calHi, $id]);
+                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, `$colLo` = ?, `$colHi` = ? WHERE id = ?",
+            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $calLo, $calHi, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
             'username' => "relay-$id", 'password' => relay_device_password($id), 'topic' => "com/$id",
         ]]);
+
+    case 'ack_break_in':
+        $id = (int)($_POST['id'] ?? 0);
+        $rows = device_rows($connect, $id);
+        if (!$rows || !$rows[0]['can_ack']) {
+            relay_forbidden('Сбросить тревогу может администратор или пользователь, управляющий замком');
+        }
+        relay_q($connect, 'UPDATE devices SET break_in_at = NULL, break_in_source = NULL WHERE id = ?', [$id]);
+        relay_event($connect, $id, 'info', 'Тревога «взлом двери» сброшена', 'info', null, $login);
+        relay_json(['ok' => true]);
 
     case 'pending':
         $rows = relay_rows(mysqli_query($connect,

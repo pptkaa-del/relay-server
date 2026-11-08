@@ -456,3 +456,41 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
   .print-area { display: flex !important; flex-wrap: wrap; gap: 3mm; }
   .print-area img { display: block; break-inside: avoid; }
 }
+
+/* ---------- Карта устройств ---------- */
+:root { --pin-green: #16a34a; --pin-red: #dc2626; --pin-yellow: #eab308; --pin-blue: #2563eb; --pin-purple: #9333ea; --purple-soft: #f3e8ff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --purple-soft: #2e1a47; } }
+:root[data-theme="dark"] { --purple-soft: #2e1a47; }
+.map-card { margin-bottom: 16px; overflow: hidden; }
+.map-card .card-head { gap: 8px 14px; }
+.map-card .card-head h2 { flex: 0 0 auto; }
+.map-legend { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-2); }
+.map-legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.map { height: 380px; background: var(--surface-2); z-index: 0; }
+.map-card.collapsed .map-wrap { display: none; }
+.map-note { padding: 8px 16px; font-size: 13px; color: var(--muted); }
+.map-note:empty { display: none; }
+.pin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 1px 3px rgba(0,0,0,.35); flex: none; }
+.map-pin-wrap { background: none; border: 0; }
+.map-pin-wrap .pin { width: 20px; height: 20px; border-width: 3px; }
+.map-pin-wrap .pin.sel { width: 26px; height: 26px; margin: -3px; box-shadow: 0 0 0 3px var(--accent), 0 2px 6px rgba(0,0,0,.4); }
+.pin.c-green { background: var(--pin-green); } .pin.c-red { background: var(--pin-red); } .pin.c-yellow { background: var(--pin-yellow); }
+.pin.c-blue { background: var(--pin-blue); } .pin.c-purple { background: var(--pin-purple); }
+.map-pin-wrap .pin.c-purple { animation: pin-alarm 1.2s ease-in-out infinite; }
+@keyframes pin-alarm { 0%, 100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, .7); } 50% { box-shadow: 0 0 0 10px rgba(147, 51, 234, 0); } }
+.map-pop { font: 13px var(--font); line-height: 1.45; min-width: 180px; }
+.map-pop .muted { color: #6b7280; }
+.map-alarm { margin: 4px 0; padding: 3px 8px; border-radius: 6px; background: var(--pin-purple); color: #fff; font-weight: 700; font-size: 12px; }
+.map-open { display: inline-block; margin-top: 6px; font-weight: 600; }
+.leaflet-container a.map-open { color: var(--pin-blue); }
+/* тревога «взлом двери» */
+.badge.breakin { background: var(--pin-purple); color: #fff; font-weight: 700; }
+.dot.breakin { background: var(--pin-purple); }
+.breakin-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 14px; padding: 10px 14px;
+  border: 1px solid var(--pin-purple); border-radius: var(--radius-sm); background: var(--purple-soft); color: var(--text); font-size: 13.5px; }
+.breakin-banner b { color: var(--pin-purple); letter-spacing: .02em; }
+.breakin-banner .spacer { flex: 1; }
+#breakin .breakin-banner { margin-bottom: 16px; }
+/* отключение реле в форме */
+.relay-field .relay-off { font-size: 12px; color: var(--muted); white-space: normal; }
+@media (max-width: 760px) { .map { height: 300px; } .map-legend { flex-basis: 100%; order: 3; } }

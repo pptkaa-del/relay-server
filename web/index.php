@@ -26,6 +26,25 @@ layout_head('Устройства', 'devices', $login);
   <div id="pending-list"></div>
 </section>
 
+<link rel="stylesheet" href="<?= h(asset_url('leaflet/leaflet.css')) ?>">
+<section class="card map-card" id="map-card">
+  <div class="card-head">
+    <h2>Карта</h2>
+    <div class="map-legend">
+      <span><i class="pin c-green"></i>на связи</span>
+      <span><i class="pin c-red"></i>нет данных</span>
+      <span><i class="pin c-yellow"></i>нет питания (работа от АКБ)</span>
+      <span><i class="pin c-blue"></i>дверь открыта</span>
+      <span><i class="pin c-purple"></i>взлом двери</span>
+    </div>
+    <button class="btn sm ghost" id="map-toggle" aria-expanded="true">Скрыть</button>
+  </div>
+  <div class="map-wrap" id="map-wrap">
+    <div id="map" class="map"></div>
+    <div class="map-note" id="map-note"></div>
+  </div>
+</section>
+
 <div class="toolbar">
   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input class="input" id="q" type="search" placeholder="Поиск по названию, адресу или ID"></label>
@@ -56,10 +75,10 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">ID устройства<input class="input" name="id" type="number" min="1" step="1" required placeholder="например, 12"></label>
         <label class="field">Название объекта<input class="input" name="name" maxlength="200" placeholder="Шкаф ТП-12"></label>
         <label class="field full">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
-        <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="Реле 1"></label>
-        <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="Реле 2"></label>
-        <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="Реле 3"></label>
-        <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="Реле 4"></label>
+        <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60" placeholder="Реле 1"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60" placeholder="Реле 4"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено — не показывать и не управлять</label></div>
         <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
           <span class="hint">включено — дверь закрыта, выключено — открыта</span></label>
         <fieldset class="fieldset">
@@ -93,4 +112,4 @@ layout_head('Устройства', 'devices', $login);
   <div class="modal-foot"><a class="btn" id="added-open" href="#">Открыть устройство</a><button class="btn primary" data-close>Готово</button></div>
 </dialog>
 
-<?php layout_foot(['devices.js']); ?>
+<?php layout_foot(['leaflet/leaflet.js', 'map.js', 'devices.js']); ?>

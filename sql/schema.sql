@@ -278,3 +278,13 @@ CREATE TABLE IF NOT EXISTS `mqtt_forwards` (
     CONSTRAINT `fk_fwd_src` FOREIGN KEY (`src_broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE,
     CONSTRAINT `fk_fwd_dst` FOREIGN KEY (`dst_broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.8: отключённые реле (не показываются, команды им не отправляются),
+--       тревога «взлом двери» (дверь открылась без команды «Открыть»)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `relays_disabled` TINYINT(4) NOT NULL DEFAULT 0;  -- биты 0–3: реле 1–4 отключены
+ALTER TABLE `devices`
+    ADD COLUMN IF NOT EXISTS `break_in_at` DATETIME DEFAULT NULL,             -- время взлома (NULL — тревоги нет)
+    ADD COLUMN IF NOT EXISTS `break_in_source` VARCHAR(20) DEFAULT NULL;      -- relay4 — замок на реле 4, door — геркон платы ver_5_1

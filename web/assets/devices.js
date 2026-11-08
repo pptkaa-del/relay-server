@@ -42,6 +42,11 @@
     : `<span class="badge ${st === 1 ? 'success' : st === 2 ? 'warning' : ''}">${App.RSTATE[st]}</span>`;
   const relayStateText = r => r.state == null ? 'нет данных' : r.lock ? App.LOCK4_STATE[r.state] : App.RSTATE[r.state];
   const viewOnly = '<span class="muted ro-note" title="Администратор выдал только просмотр">только просмотр</span>';
+  // тревога «взлом двери»: дверь открылась без команды «Открыть»
+  const breakBadge = d => d.break_in ? `<span class="badge breakin" title="Дверь открылась без команды «Открыть» · ${fmtTime(d.break_in.ts)}">ВЗЛОМ ДВЕРИ</span>` : '';
+  const breakBanner = d => d.break_in ? `<div class="breakin-banner"><b>ВЗЛОМ ДВЕРИ</b>
+      <span>Дверь открылась без команды «Открыть» ${d.break_in.source === 'door' ? '(датчик двери)' : '(замок, реле 4)'} · ${fmtTime(d.break_in.ts)} · ${ago(d.break_in.ts)}</span>
+      <span class="spacer"></span>${d.can_ack ? `<button class="btn sm" data-ack="${d.id}">Сбросить тревогу</button>` : ''}</div>` : '';
   const canSend = d => d.registered && d.state !== 'never';
   const metaHtml = d => {
     const seen = d.last_data_ts;
@@ -58,7 +63,7 @@
     const on = d.relays.filter(r => r.state === 1).length;
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
-      <div class="side-item-top"><span class="dot ${d.state}"></span><span class="side-item-name">${esc(d.name)}</span><span class="mono muted">#${d.id}</span></div>
+      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}<span class="mono muted">#${d.id}</span></div>
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
@@ -71,7 +76,7 @@
       const dis = !canSend(d);
       return `<tr class="ov-grp"><td colspan="4"><div class="ov-head">
           <button class="ov-dev" data-sel="${d.id}" title="Открыть устройство"><span class="dot ${d.state}"></span><b>${esc(d.name)}</b></button>
-          ${stateBadge(d.state)}<span class="dev-meta ov-meta">${metaHtml(d)}</span></div></td></tr>`
+          ${stateBadge(d.state)}${breakBadge(d)}${d.can_ack && d.break_in ? `<button class="btn sm" data-ack="${d.id}">Сбросить тревогу</button>` : ''}<span class="dev-meta ov-meta">${metaHtml(d)}</span></div></td></tr>`
         + d.relays.map(r => {
           const key = d.id + ':' + r.num, cls = r.state === 1 ? 'on' : r.state === 2 ? 'err' : '';
           const ctl = !r.control ? viewOnly
@@ -127,6 +132,7 @@
         ${stateBadge(d.state)}
       </div>
       <div class="card-body">
+        ${breakBanner(d)}
         <div class="dev-meta dev-panel-meta">${metaHtml(d)}</div>
         <div class="relay-cards">${relays}</div>
         ${lock}
@@ -142,6 +148,8 @@
 
   function render() {
     const list = visible();
+    // карта (map.js) рисует те же устройства, что и список: с учётом фильтров и поиска
+    document.dispatchEvent(new CustomEvent('relay:devices', { detail: { list, selected } }));
     const sel = selected ? devices.find(d => d.id === selected) : null;
     $('#split').classList.toggle('has-sel', !!sel);
     $('.side-all').classList.toggle('sel', !sel);
@@ -201,7 +209,14 @@
     finally { if (!relay && btn) btn.disabled = false; }
   }
 
-  $('#split').addEventListener('click', e => {
+  $('#split').addEventListener('click', async e => {
+    const ack = e.target.closest('[data-ack]');
+    if (ack) {
+      ack.disabled = true;
+      try { await api('/api/devices.php', { action: 'ack_break_in', id: ack.dataset.ack }, true); toast('Тревога сброшена', 'ok'); load().catch(() => {}); }
+      catch (er) { ack.disabled = false; toast(er.message, 'err'); }
+      return;
+    }
     const s = e.target.closest('[data-sel]');
     if (s) { e.preventDefault(); return select(+s.dataset.sel); }
     const sw = e.target.closest('.switch');
@@ -255,6 +270,7 @@
     const p = { action: 'add' };
     for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = F(k).value.trim();
     p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
+    for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую устройство в брокере…';
     try {

@@ -42,7 +42,7 @@
             <option value="">— все реле —</option>${MODES.map(([v, t]) => `<option value="${v}:">${t}</option>`).join('')}</select></div>
         <div class="perm-relays">${d.relays.map(r => {
           const cur = perms?.[d.id]?.[r.num] || '';
-          return `<label class="perm-relay"><span title="${esc(r.name)}">${r.lock ? '🔒 ' : ''}${esc(r.name)}</span>
+          return `<label class="perm-relay"><span title="${esc(r.name)}${r.off ? ' — реле отключено в настройках устройства' : ''}" class="${r.off ? 'muted' : ''}">${r.lock ? '🔒 ' : ''}${esc(r.name)}${r.off ? ' (откл.)' : ''}</span>
             <select class="input" data-perm="${d.id}:${r.num}">${MODES.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
         }).join('')}</div></div>`).join('')
       : '<div class="empty" style="padding:20px">Устройств пока нет — сначала добавьте устройство на главной странице.</div>';

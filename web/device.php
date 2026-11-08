@@ -19,6 +19,7 @@ layout_head("Устройство #$id", 'devices', $login);
   </div>
 </div>
 
+<div id="breakin"></div>
 <div class="layout-2">
   <div class="stack">
     <section class="card o-relays">
@@ -83,10 +84,10 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field full">Название объекта<input class="input" name="name" maxlength="200" required></label>
         <label class="field full">Адрес<input class="input" name="address" maxlength="300"></label>
         <label class="field full">Координаты<input class="input" name="coordinates" maxlength="100" placeholder="55.7558, 37.6173"></label>
-        <label class="field">Реле 1<input class="input" name="relay1" maxlength="60"></label>
-        <label class="field">Реле 2<input class="input" name="relay2" maxlength="60"></label>
-        <label class="field">Реле 3<input class="input" name="relay3" maxlength="60"></label>
-        <label class="field">Реле 4<input class="input" name="relay4" maxlength="60"></label>
+        <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено — не показывать и не управлять</label></div>
         <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
           <span class="hint">включено — дверь закрыта, выключено — открыта; кнопки: «Закрыть», «Открыть», «Открыть надолго»</span></label>
         <fieldset class="fieldset">

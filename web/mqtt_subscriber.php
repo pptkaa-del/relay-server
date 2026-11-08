@@ -68,6 +68,24 @@ const STATE_NAMES = [0 => 'выкл', 1 => 'вкл', 2 => 'ошибка'];
 /* Обработка сообщений собственного брокера                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Дверь открылась. Если за последние 3 минуты не было команды «Открыть» / «Открыть надолго»
+ * (реле 4-замку, всем реле или замку платы ver_5_1) и перезагрузки — это взлом: тревога держится,
+ * пока её не сбросят в панели.
+ */
+function checkBreakIn(mysqli $c, int $id, string $source): void
+{
+    $cmd = relay_q($c, "SELECT 1 FROM commands WHERE device_id = ? AND created_at > NOW() - INTERVAL 180 SECOND
+                          AND (command = 5 OR (command IN (2, 3) AND relay_num IN (0, 4, 5))) LIMIT 1", [$id]);
+    if ($cmd && mysqli_num_rows($cmd) > 0) {
+        return; // дверь открыли командой из панели
+    }
+    relay_q($c, 'UPDATE devices SET break_in_at = NOW(), break_in_source = ? WHERE id = ?', [$source, $id]);
+    relay_event($c, $id, 'alarm', 'ВЗЛОМ ДВЕРИ: дверь открыта без команды «Открыть»'
+        . ($source === 'door' ? ' (датчик двери)' : ' (замок, реле 4)'), 'error', ['source' => $source]);
+    writeLog("ВЗЛОМ ДВЕРИ: устройство $id ($source)", 'WARN');
+}
+
 function handleStat(array $d, bool $retained): void
 {
     $c = db();
@@ -126,6 +144,9 @@ function handleStat(array $d, bool $retained): void
             $door === 1
                 ? relay_event($c, $id, 'door', 'Дверь открыта', 'warning')
                 : relay_event($c, $id, 'door', 'Дверь закрыта', 'info');
+            if ($door === 1) {
+                checkBreakIn($c, $id, 'door');
+            }
         }
         if (!$retained && $current['lock_state'] !== null && (int)$current['lock_state'] !== $lock) {
             relay_event($c, $id, 'lock', $lock === 1 ? 'Замок под напряжением' : 'Замок обесточен', 'info');
@@ -163,6 +184,7 @@ function handleStat(array $d, bool $retained): void
                 : "реле $i: " . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i]);
         }
     }
+    $doorOpened = $lock4 && $cur[4] === 1 && $r[4] === 0;
     $name = (string)$current['name'];
     if ($changes) {
         $type = in_array('status', $changes, true) ? 'status' : 'relay';
@@ -178,6 +200,9 @@ function handleStat(array $d, bool $retained): void
     }
     if ($relayText) {
         relay_event($c, $id, 'relay', implode(', ', $relayText), 'info', ['before' => array_values($cur), 'after' => array_values($r)]);
+    }
+    if ($doorOpened) {
+        checkBreakIn($c, $id, 'relay4');
     }
 
     // Авария «питание от АКБ»

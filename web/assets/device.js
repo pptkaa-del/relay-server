@@ -51,7 +51,16 @@
     document.title = `${d.name} · Relay Control`;
     $('#d-name').textContent = d.name;
     $('#d-addr').textContent = d.address || 'Адрес не указан';
-    $('#d-badge').innerHTML = stateBadge(d.state);
+    $('#d-badge').innerHTML = stateBadge(d.state) + (d.break_in ? ' <span class="badge breakin">ВЗЛОМ ДВЕРИ</span>' : '');
+    $('#breakin').innerHTML = d.break_in ? `<div class="breakin-banner"><b>ВЗЛОМ ДВЕРИ</b>
+      <span>Дверь открылась без команды «Открыть» ${d.break_in.source === 'door' ? '(датчик двери)' : '(замок, реле 4)'} · ${fmtTime(d.break_in.ts)} · ${ago(d.break_in.ts)}</span>
+      <span class="spacer"></span>${d.can_ack ? '<button class="btn sm" id="b-ack">Сбросить тревогу</button>' : ''}</div>` : '';
+    const ack = $('#b-ack');
+    if (ack) ack.addEventListener('click', async () => {
+      ack.disabled = true;
+      try { await api('/api/devices.php', { action: 'ack_break_in', id }, true); toast('Тревога сброшена', 'ok'); load(); loadLog(true); }
+      catch (e) { ack.disabled = false; toast(e.message, 'err'); }
+    });
     // кнопки по правам: изменение — только администратор, перезагрузка — при управлении хотя бы одним реле
     $('#b-edit').classList.toggle('hidden', !d.can_edit);
     $('#b-reboot').classList.toggle('hidden', !d.can_reboot);
@@ -236,7 +245,11 @@
     form.elements.relay4_lock.checked = !!dev.relay4_lock;
     fillCal(); form.dispatchEvent(new Event('bat-type'));
     $('#cal-current').innerHTML = dev.bat_adc != null ? `Текущее значение АЦП: <b class="mono">${dev.bat_adc}</b> (${fmtTime(dev.bat_adc_ts)})` : 'Устройство ещё не передавало значение АЦП АКБ.';
-    dev.relays.forEach(r => { form.elements['relay' + r.num].value = r.name; });
+    // подписи всех четырёх реле, включая отключённые (их нет в dev.relays)
+    for (const i of [1, 2, 3, 4]) {
+      form.elements['relay' + i].value = (dev.relay_names || {})[i] || 'Реле ' + i;
+      form.elements[`relay${i}_off`].checked = (dev.relays_disabled || []).includes(i);
+    }
     dlg.showModal();
   });
   dlg.addEventListener('close', async () => {
@@ -244,6 +257,7 @@
     const p = { action: 'update', id };
     for (const k of ['name', 'address', 'coordinates', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = form.elements[k].value;
     p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
+    for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }
   });
   $('#edit').addEventListener('click', e => {
