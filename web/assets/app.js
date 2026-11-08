@@ -144,6 +144,7 @@ const App = (() => {
     download: '<svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
     search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     server: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+    phone: '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>',
     trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
   };
 
@@ -243,5 +244,8 @@ const App = (() => {
     });
   }
 
-  return { logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /** 89997777777 → «8 999 777-77-77» */
+  const fmtPhone = p => /^8\d{10}$/.test(p || '') ? `${p[0]} ${p.slice(1, 4)} ${p.slice(4, 7)}-${p.slice(7, 9)}-${p.slice(9)}` : String(p || '');
+
+  return { fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

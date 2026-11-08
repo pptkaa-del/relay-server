@@ -315,3 +315,9 @@ CREATE TABLE IF NOT EXISTS `mqtt_simulations` (
     UNIQUE KEY `uniq_sim` (`broker_id`, `device_id`),
     CONSTRAINT `fk_sim_broker` FOREIGN KEY (`broker_id`) REFERENCES `mqtt_brokers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.10: номер SIM-карты устройства (11 цифр, вид 89997777777)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `sim_phone` VARCHAR(11) NOT NULL DEFAULT '';

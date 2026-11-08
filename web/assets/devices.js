@@ -50,6 +50,7 @@
   const metaHtml = d => {
     const seen = d.last_data_ts;
     return `<span class="item mono">#${d.id}</span>
+      ${d.sim_phone ? `<a class="item mono" href="tel:${esc(d.sim_phone)}" title="Номер SIM-карты">${ICONS.phone}${App.fmtPhone(d.sim_phone)}</a>` : ''}
       <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
       <span class="item">${signalBars(d.signal_level)}</span>
       ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
@@ -240,7 +241,7 @@
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = F(k).value.trim();
     p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');

@@ -94,6 +94,7 @@
     const lc = d.last_command;
     $('#info').innerHTML = `
       <dt>ID устройства</dt><dd class="mono">${d.id}</dd>
+      <dt>SIM-карта</dt><dd>${d.sim_phone ? `<a class="mono" href="tel:${esc(d.sim_phone)}">${App.fmtPhone(d.sim_phone)}</a>` : '<span class="muted">не указан</span>'}</dd>
       <dt>MQTT логин</dt><dd class="mono">relay-${d.id}</dd>
       <dt>Топик команд</dt><dd class="mono">com/${d.id}</dd>
       <dt>Связь</dt><dd>${stateBadge(d.state)}</dd>
@@ -242,6 +243,7 @@
   $('#b-edit').addEventListener('click', () => {
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
+    form.elements.sim_phone.value = dev.sim_phone || '';
     form.elements.bat_type.value = String(dev.bat_type || 12);
     form.elements.relay4_lock.checked = !!dev.relay4_lock;
     fillCal(); form.dispatchEvent(new Event('bat-type'));
@@ -256,7 +258,7 @@
   dlg.addEventListener('close', async () => {
     if (dlg.returnValue !== 'save') return;
     const p = { action: 'update', id };
-    for (const k of ['name', 'address', 'coordinates', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = form.elements[k].value;
+    for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = form.elements[k].value;
     p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }

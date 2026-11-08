@@ -74,7 +74,8 @@ layout_head('Устройства', 'devices', $login);
       <div class="form-grid">
         <label class="field">ID устройства<input class="input" name="id" type="number" min="1" step="1" required placeholder="например, 12"></label>
         <label class="field">Название объекта<input class="input" name="name" maxlength="200" placeholder="Шкаф ТП-12"></label>
-        <label class="field full">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
+        <label class="field">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
+        <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" placeholder="89997777777" pattern="[0-9+()\s\-]{10,20}" title="11 цифр, например 89997777777"></label>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60" placeholder="Реле 1"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
