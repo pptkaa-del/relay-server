@@ -11,6 +11,7 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
+ *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4 — массово задать названия реле (пустое — не менять)
  *   POST action=ack_break_in id       — сбросить тревогу «взлом двери» (администратор или управляющий замком)
  *
  * Администратор видит всё. Пользователь — только выданные ему реле (panel_user_relays): list/get/battery
@@ -20,14 +21,14 @@
 require __DIR__ . '/../conectbd.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
-if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore'], true) && !relay_is_admin()) {
+if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays'], true) && !relay_is_admin()) {
     relay_forbidden('Добавлять устройства и изменять их данные может только администратор');
 }
 
-/** Номер SIM-карты из формы → «89997777777» ('' — не указан). Принимает +7, пробелы, скобки, дефисы. */
+/** Номер SIM-карты из формы → «+79997777777» ('' — не указан). 8 в начале заменяется на +7; пробелы, скобки, дефисы убираются. */
 function sim_phone_from_post(): string
 {
     $raw = trim((string)($_POST['sim_phone'] ?? ''));
@@ -36,14 +37,12 @@ function sim_phone_from_post(): string
     }
     $d = preg_replace('/\D+/', '', $raw);
     if (strlen($d) === 11 && ($d[0] === '7' || $d[0] === '8')) {
-        $d = '8' . substr($d, 1);
-    } elseif (strlen($d) === 10 && $d[0] === '9') {
-        $d = '8' . $d;
+        $d = substr($d, 1);
     }
-    if (!preg_match('/^8\d{10}$/', $d)) {
-        relay_json(['error' => 'Номер SIM-карты: 11 цифр в виде 89997777777'], 400);
+    if (!preg_match('/^\d{10}$/', $d)) {
+        relay_json(['error' => 'Номер SIM-карты: +7 и 10 цифр, например +79997777777'], 400);
     }
-    return $d;
+    return '+7' . $d;
 }
 
 /** Отключённые реле из формы (relay1_off … relay4_off = 1) → битовая маска */
@@ -305,6 +304,42 @@ switch ($action) {
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
             'username' => "relay-$id", 'password' => relay_device_password($id), 'topic' => "com/$id",
         ]]);
+
+    case 'bulk_relays':
+        try {
+            $ids = relay_parse_id_list((string)($_POST['ids'] ?? ''));
+        } catch (RuntimeException $e) {
+            relay_json(['error' => $e->getMessage()], 400);
+        }
+        if (!$ids) {
+            relay_json(['error' => 'Укажите номера устройств, например: 1, 3, 5-10'], 400);
+        }
+        $set = [];
+        $params = [];
+        $names = [];
+        for ($i = 1; $i <= 4; $i++) {
+            $v = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST["relay$i"] ?? ''))), 0, 60);
+            if ($v !== '') {
+                $set[] = "name_reley_$i = ?";
+                $params[] = $v;
+                $names[] = "реле $i — «{$v}»";
+            }
+        }
+        if (!$set) {
+            relay_json(['error' => 'Введите название хотя бы одного реле'], 400);
+        }
+        $updated = $missing = [];
+        foreach ($ids as $id) {
+            $res = relay_q($connect, 'SELECT 1 FROM general_info WHERE id = ?', [$id]);
+            if (!$res || mysqli_num_rows($res) === 0) {
+                $missing[] = $id;
+                continue;
+            }
+            relay_q($connect, 'UPDATE general_info SET ' . implode(', ', $set) . ' WHERE id = ?', [...$params, $id]);
+            relay_event($connect, $id, 'info', 'Массовое изменение названий: ' . implode(', ', $names), 'info', null, $login);
+            $updated[] = $id;
+        }
+        relay_json(['ok' => true, 'updated' => $updated, 'missing' => $missing]);
 
     case 'ack_break_in':
         $id = (int)($_POST['id'] ?? 0);

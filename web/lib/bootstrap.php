@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.11';
+const RELAY_VERSION       = '3.12';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -509,6 +509,41 @@ function relay_publish(array $broker, string $topic, string $payload, int $qos =
  * Разбирает список подписок «stat, rep com/#» (через запятую, пробел или перевод строки).
  * @return array{0: string[], 1: string[]} [верные фильтры, ошибки]
  */
+/**
+ * Список номеров устройств: «1, 3, 5-10», «1 - 10», «5–8» (тире), разделители — запятая, точка с запятой, пробел.
+ * Возвращает уникальные номера по возрастанию; при ошибке — RuntimeException с понятным текстом.
+ */
+function relay_parse_id_list(string $s, int $max = 500): array
+{
+    $s = preg_replace('/\s*[-\x{2013}\x{2014}]\s*/u', '-', trim($s)); // «1 - 10», «1–10» → «1-10»
+    $ids = [];
+    foreach (preg_split('/[\s,;]+/u', $s, -1, PREG_SPLIT_NO_EMPTY) as $part) {
+        if (!preg_match('/^(\d{1,10})(?:-(\d{1,10}))?$/', $part, $m)) {
+            throw new RuntimeException("Неверный номер устройства: «{$part}». Пример: 1, 3, 5-10");
+        }
+        $a = (int)$m[1];
+        $b = isset($m[2]) ? (int)$m[2] : $a;
+        if ($a < 1 || $b > 2147483647) {
+            throw new RuntimeException("Неверный номер или диапазон: «{$part}»");
+        }
+        if ($b < $a) {
+            [$a, $b] = [$b, $a]; // «10-1» = «1-10»
+        }
+        if ($b - $a >= $max || count($ids) + ($b - $a + 1) > $max * 2) {
+            throw new RuntimeException("Слишком много устройств: не больше $max за раз");
+        }
+        for ($i = $a; $i <= $b; $i++) {
+            $ids[$i] = true;
+        }
+    }
+    $ids = array_keys($ids);
+    sort($ids);
+    if (count($ids) > $max) {
+        throw new RuntimeException("Слишком много устройств: не больше $max за раз");
+    }
+    return $ids;
+}
+
 /** Подходит ли топик под фильтр MQTT (+ — один уровень, # — всё дальше; $SYS не совпадает с # и +). */
 function relay_topic_match(string $filter, string $topic): bool
 {

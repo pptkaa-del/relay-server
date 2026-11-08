@@ -24,25 +24,11 @@ if (!mysqli_query($connect, 'SELECT 1 FROM mqtt_simulations LIMIT 0')) {
 /** «101, 102-105 107» → [101, 102, 103, 104, 105, 107] */
 function sim_parse_ids(string $s): array
 {
-    $ids = [];
-    foreach (preg_split('/[\s,;]+/u', trim($s), -1, PREG_SPLIT_NO_EMPTY) as $part) {
-        if (preg_match('/^(\d{1,10})(?:-(\d{1,10}))?$/', $part, $m)) {
-            $a = (int)$m[1];
-            $b = isset($m[2]) ? (int)$m[2] : $a;
-            if ($a < 1 || $b < $a || $b > 2147483647) {
-                relay_json(['error' => "Неверный номер или диапазон: «{$part}»"], 400);
-            }
-            if ($b - $a >= SIM_MAX) {
-                relay_json(['error' => 'Слишком большой диапазон: не больше ' . SIM_MAX . ' устройств'], 400);
-            }
-            for ($i = $a; $i <= $b; $i++) {
-                $ids[$i] = true;
-            }
-        } else {
-            relay_json(['error' => "Неверный номер устройства: «{$part}». Пример: 101, 102-105"], 400);
-        }
+    try {
+        return relay_parse_id_list($s, SIM_MAX);
+    } catch (RuntimeException $e) {
+        relay_json(['error' => $e->getMessage()], 400);
     }
-    return array_keys($ids);
 }
 
 function sim_row(mysqli $db, int $id): array

@@ -9,7 +9,10 @@ layout_head('Устройства', 'devices', $login);
     <h1>Устройства</h1>
     <p id="lastmsg">Загрузка…</p>
   </div>
-  <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить устройство</button>
+  <div class="btn-row">
+    <button class="btn" id="b-bulk" title="Задать названия реле сразу нескольким устройствам"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Названия реле…</button>
+    <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить устройство</button>
+  </div>
 </div>
 
 <div class="tiles" id="tiles">
@@ -75,7 +78,7 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">ID устройства<input class="input" name="id" type="number" min="1" step="1" required placeholder="например, 12"></label>
         <label class="field">Название объекта<input class="input" name="name" maxlength="200" placeholder="Шкаф ТП-12"></label>
         <label class="field">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
-        <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" placeholder="89997777777" pattern="[0-9+()\s\-]{10,20}" title="11 цифр, например 89997777777"></label>
+        <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" placeholder="+79997777777" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60" placeholder="Реле 1"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
@@ -111,6 +114,29 @@ layout_head('Устройства', 'devices', $login);
       (<span class="mono">mqtt.setServer(...)</span>) и перепрошить её.</p>
   </div>
   <div class="modal-foot"><a class="btn" id="added-open" href="#">Открыть устройство</a><button class="btn primary" data-close>Готово</button></div>
+</dialog>
+
+<dialog class="modal" id="bulk">
+  <form method="dialog" id="bulk-form">
+    <div class="modal-head"><h2>Названия реле для нескольких устройств</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <label class="field full">Номера устройств<input class="input mono" name="ids" required autocomplete="off" placeholder="например: 1, 3, 5-10">
+          <span class="hint">через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</span></label>
+        <div class="full bulk-preview" id="bulk-preview"></div>
+        <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="не менять"></label>
+        <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="не менять"></label>
+        <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="не менять"></label>
+        <label class="field">Реле 4<input class="input" name="relay4" maxlength="60" placeholder="не менять"></label>
+        <p class="hint full" style="margin:0">Пустое поле — название этого реле не меняется.</p>
+      </div>
+      <div class="result" id="bulk-result"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" value="cancel" formnovalidate>Закрыть</button>
+      <button class="btn primary" type="submit" id="bulk-submit">Применить</button>
+    </div>
+  </form>
 </dialog>
 
 <?php layout_foot(['leaflet/leaflet.js', 'map.js', 'devices.js']); ?>

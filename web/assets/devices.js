@@ -218,6 +218,54 @@
   const addParam = new URLSearchParams(location.search).get('add');
   if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
 
+  /* ---------- Массовое изменение названий реле ---------- */
+  const bulkDlg = $('#bulk'), bulkForm = $('#bulk-form');
+  /** «1, 3, 5-10» → [1, 3, 5, …, 10] или строка ошибки (как relay_parse_id_list на сервере) */
+  function parseIds(s) {
+    const out = new Set();
+    for (const part of s.replace(/\s*[-–—]\s*/g, '-').split(/[\s,;]+/).filter(Boolean)) {
+      const m = /^(\d{1,10})(?:-(\d{1,10}))?$/.exec(part);
+      if (!m) return `неверный номер «${part}»`;
+      let a = +m[1], b = m[2] ? +m[2] : a;
+      if (b < a) [a, b] = [b, a];
+      if (b - a >= 500) return 'не больше 500 устройств за раз';
+      for (let i = a; i <= b; i++) out.add(i);
+    }
+    return [...out].sort((x, y) => x - y);
+  }
+  function bulkPreview() {
+    const box = $('#bulk-preview'), v = bulkForm.elements.ids.value.trim();
+    if (!v) { box.textContent = ''; return; }
+    const ids = parseIds(v);
+    if (typeof ids === 'string') { box.innerHTML = `<span class="bad-text">${esc(ids)}</span>`; return; }
+    const known = new Map(devices.map(d => [d.id, d]));
+    const found = ids.filter(i => known.has(i)), missing = ids.filter(i => !known.has(i));
+    box.innerHTML = `Будет изменено устройств: <b>${found.length}</b>`
+      + (found.length ? ` <span class="muted">(${found.slice(0, 12).map(i => '#' + i + ' ' + esc(known.get(i).name)).join(', ')}${found.length > 12 ? ' …' : ''})</span>` : '')
+      + (missing.length ? `<div class="muted">нет в панели: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? ' …' : ''}</div>` : '');
+  }
+  bulkForm.elements.ids.addEventListener('input', bulkPreview);
+  $('#b-bulk').addEventListener('click', () => {
+    bulkForm.reset(); $('#bulk-preview').textContent = ''; $('#bulk-result').className = 'result'; $('#bulk-result').textContent = '';
+    bulkDlg.showModal(); bulkForm.elements.ids.focus();
+  });
+  bulkForm.addEventListener('submit', async e => {
+    if (e.submitter && e.submitter.value === 'cancel') return;
+    e.preventDefault();
+    const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
+    for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
+    const res = $('#bulk-result'), btn = $('#bulk-submit');
+    btn.disabled = true;
+    try {
+      const j = await api('/api/devices.php', p, true);
+      res.className = 'result ok';
+      res.textContent = `Изменено устройств: ${j.updated.length}` + (j.missing.length ? `. Нет в панели: ${j.missing.join(', ')}` : '');
+      toast(`Названия реле изменены у ${j.updated.length} устр.`, 'ok');
+      load().catch(() => {});
+    } catch (er) { res.className = 'result err'; res.textContent = er.message; }
+    finally { btn.disabled = false; }
+  });
+
   /* ---------- Незарегистрированные платы ---------- */
   const isAdmin = document.body.classList.contains('role-admin');
   async function loadPending() {

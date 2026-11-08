@@ -244,8 +244,22 @@ const App = (() => {
     });
   }
 
-  /** 89997777777 → «8 999 777-77-77» */
-  const fmtPhone = p => /^8\d{10}$/.test(p || '') ? `${p[0]} ${p.slice(1, 4)} ${p.slice(4, 7)}-${p.slice(7, 9)}-${p.slice(9)}` : String(p || '');
+  /** +79997777777 → «+7 999 777-77-77» (старые 89997777777 — так же) */
+  function fmtPhone(p) {
+    const m = /^(?:\+7|8)(\d{10})$/.exec(p || '');
+    if (!m) return String(p || '');
+    const d = m[1];
+    return `+7 ${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8)}`;
+  }
+  /** Поле номера SIM: 8 или 7 в начале сразу заменяется на +7 */
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el.matches || !el.matches('input[name="sim_phone"]')) return;
+    const v = el.value.trimStart();
+    if (/^8/.test(v)) el.value = '+7' + v.slice(1);
+    else if (/^7/.test(v)) el.value = '+' + v;
+    else if (/^9/.test(v) && v.replace(/\D/g, '').length >= 10) el.value = '+7' + v;
+  });
 
   return { fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

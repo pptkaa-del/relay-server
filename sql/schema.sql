@@ -321,3 +321,9 @@ CREATE TABLE IF NOT EXISTS `mqtt_simulations` (
 -- ---------------------------------------------------------------------------
 ALTER TABLE `general_info`
     ADD COLUMN IF NOT EXISTS `sim_phone` VARCHAR(11) NOT NULL DEFAULT '';
+
+-- ---------------------------------------------------------------------------
+-- v3.11: номер SIM-карты в виде +79997777777 (было 89997777777)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info` MODIFY `sim_phone` VARCHAR(12) NOT NULL DEFAULT '';
+UPDATE `general_info` SET `sim_phone` = CONCAT('+7', SUBSTRING(`sim_phone`, 2)) WHERE `sim_phone` REGEXP '^8[0-9]{10}$';

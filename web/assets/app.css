@@ -517,3 +517,7 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
   .split-side { position: static; }
   .split-main .map { height: 60vh; min-height: 320px; }
 }
+/* массовое изменение названий реле */
+.role-user #b-bulk { display: none !important; }
+.bulk-preview { font-size: 13px; color: var(--text-2); min-height: 18px; }
+.bad-text { color: var(--bad); }
