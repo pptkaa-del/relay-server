@@ -22,8 +22,8 @@ layout_head('Пользователи', 'users', $login);
 <section class="card">
   <div class="table-wrap">
     <table class="tbl users-tbl">
-      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
-      <tbody id="users"><tr><td colspan="7" class="muted">Загрузка…</td></tr></tbody>
+      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th title="Нажатия «Перезапуск реле»; «Открыть» замку не считается">Перезапуски реле</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
+      <tbody id="users"><tr><td colspan="8" class="muted">Загрузка…</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -60,6 +60,11 @@ layout_head('Пользователи', 'users', $login);
           <span class="hint" id="pass-hint"></span>
         </div>
       </div>
+      <fieldset class="fieldset hidden" id="clicks-box">
+        <legend>Перезапуски реле</legend>
+        <p class="hint" style="margin:0">Нажатия «Перезапуск реле» этим пользователем. Команда «Открыть» замку не учитывается.</p>
+        <div id="clicks-list"></div>
+      </fieldset>
       <fieldset class="fieldset" id="perm-box">
         <legend>Доступ к реле</legend>
         <div class="perm-tools">

@@ -327,3 +327,28 @@ ALTER TABLE `general_info`
 -- ---------------------------------------------------------------------------
 ALTER TABLE `general_info` MODIFY `sim_phone` VARCHAR(12) NOT NULL DEFAULT '';
 UPDATE `general_info` SET `sim_phone` = CONCAT('+7', SUBSTRING(`sim_phone`, 2)) WHERE `sim_phone` REGEXP '^8[0-9]{10}$';
+
+-- ---------------------------------------------------------------------------
+-- v3.12: счётчик нажатий «Перезапуск реле» (команда 3) по пользователям.
+--        «Открыть» замку (реле 4 — замок, замок платы ver_5_1) не считается.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `relay_restart_clicks` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `login` VARCHAR(64) NOT NULL,
+    `device_id` INT(11) NOT NULL,
+    `relay_num` TINYINT(4) NOT NULL,          -- 1–4; 0 — «перезапуск всех»
+    `broker_id` INT(11) NOT NULL DEFAULT 1,
+    `created_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    INDEX `idx_login` (`login`, `created_at`),
+    INDEX `idx_device` (`device_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- прежние нажатия — из журнала событий (один раз, пока таблица пуста)
+INSERT INTO `relay_restart_clicks` (`login`, `device_id`, `relay_num`, `created_at`)
+SELECT e.`user_login`, e.`device_id`, CAST(JSON_VALUE(e.`data`, '$.relay') AS UNSIGNED), e.`ts`
+  FROM `device_events` e
+  LEFT JOIN `general_info` g ON g.`id` = e.`device_id`
+ WHERE e.`type` = 'command' AND e.`user_login` IS NOT NULL
+   AND JSON_VALUE(e.`data`, '$.command') = '3'
+   AND CAST(JSON_VALUE(e.`data`, '$.relay') AS UNSIGNED) <> 5
+   AND NOT (CAST(JSON_VALUE(e.`data`, '$.relay') AS UNSIGNED) = 4 AND COALESCE(g.`relay4_lock`, 0) = 1)
+   AND NOT EXISTS (SELECT 1 FROM `relay_restart_clicks`);
