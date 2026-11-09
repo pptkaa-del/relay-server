@@ -313,6 +313,17 @@ EOF
 a2enmod -q php"$PHP_VER" >/dev/null 2>&1 || true
 a2dissite -q 000-default >/dev/null 2>&1 || true
 a2ensite -q relay-server >/dev/null
+# загрузка резервных копий и дампов старой БД через панель: файлы больше стандартных 2 МБ
+for d in /etc/php/*/apache2/conf.d; do
+    [ -d "$d" ] && cat > "$d/99-relay-server.ini" <<'PHPINI'
+; Создано install.sh (off-on service): загрузка резервных копий через панель
+upload_max_filesize = 200M
+post_max_size = 210M
+max_execution_time = 600
+max_input_time = 600
+memory_limit = 512M
+PHPINI
+done
 apache2ctl configtest >/dev/null 2>&1 || { apache2ctl configtest; die "Ошибка в конфигурации Apache"; }
 systemctl enable apache2 >/dev/null
 systemctl reload apache2 2>/dev/null || systemctl restart apache2

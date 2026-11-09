@@ -13,6 +13,7 @@ function layout_head(string $title, string $active, string $login): void
         unset($nav['monitor'], $nav['labels']); // монитор и наклейки — только администратору
     } else {
         $nav['users'] = ['/users.php', 'Пользователи', '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 9M22 21a7 7 0 0 0-4-6.3"/>'];
+        $nav['backup'] = ['/backup.php', 'Копии', '<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>'];
     }
     relay_config(); // часовой пояс сервера для date('Z')
     ?>
