@@ -175,6 +175,10 @@
   function rowsHtml(rows) {
     if (kind === 'events') return rows.map(r => `<li><span class="ico ${r.level}">${ICONS[EV_ICON[r.type]] || ICONS.info}</span>
         <div>${esc(r.message)}${r.user_login ? ` <span class="who">· ${esc(r.user_login)}</span>` : ''}</div><span class="when">${esc(r.ts.slice(0, 19))}</span></li>`).join('');
+    if (kind === 'relays') return rows.map(r => `<tr><td class="mono nowrap">${esc(r.ts.slice(0, 19))}</td>
+        <td>${esc(r.name)} <span class="muted">(${r.lock ? 'замок, ' : ''}реле ${r.relay})</span></td>
+        <td class="muted">${esc(r.from)}</td>
+        <td><span class="badge ${r.lock ? (r.to_state === 1 ? 'success' : 'warning') : r.to_state === 1 ? 'success' : r.to_state === 2 ? 'warning' : ''}">${esc(r.to)}</span></td></tr>`).join('');
     if (kind === 'messages') return rows.map(r => `<tr><td data-c="time" class="mono nowrap">${esc(r.ts.slice(5, 23))}</td>
         <td data-c="dir"><span class="dir ${r.direction}">${ICONS[r.direction]}${r.direction === 'in' ? 'вход' : 'выход'}</span></td>
         <td data-c="topic" class="mono">${esc(r.topic)}${r.retained ? ' <span class="tag">retain</span>' : ''}</td>
@@ -197,6 +201,7 @@
     if (reset) {
       if (!j.rows.length) box.innerHTML = '<div class="empty">Записей нет</div>';
       else if (kind === 'events') box.innerHTML = `<ul class="timeline">${html}</ul>`;
+      else if (kind === 'relays') box.innerHTML = `<table class="tbl relays-tbl"><thead><tr><th>Время</th><th>Реле</th><th>Было</th><th>Стало</th></tr></thead><tbody>${html}</tbody></table>`;
       else if (kind === 'messages') box.innerHTML = `<table class="tbl cards"><thead><tr><th>Время</th><th></th><th>Топик</th><th>Данные</th></tr></thead><tbody>${html}</tbody></table>`;
       else box.innerHTML = `<table class="tbl"><thead><tr><th>cmd_id</th><th>Создана</th><th>Команда</th><th>Статус</th><th>Ответ устройства</th></tr></thead><tbody>${html}</tbody></table>`;
     } else {
@@ -285,5 +290,5 @@
   setInterval(() => $$('[data-ago]').forEach(el => { const t = +el.dataset.ago; if (t) el.textContent = ago(t); }), 1000);
   load(); loadLog(true);
   App.every(5000, load);
-  App.every(10000, () => { if (kind === 'events' && !paged && !$('#f-from').value && !$('#f-to').value) return loadLog(true); });
+  App.every(10000, () => { if ((kind === 'events' || kind === 'relays') && !paged && !$('#f-from').value && !$('#f-to').value) return loadLog(true); });
 })();

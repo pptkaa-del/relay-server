@@ -25,7 +25,7 @@ switch ($action) {
         $before = max(0, (int)($_GET['before'] ?? 0));
         $device = (int)($_GET['device'] ?? 0);
         $topic = trim((string)($_GET['topic'] ?? ''));
-        $limit = min(500, max(1, (int)($_GET['limit'] ?? 200)));
+        $limit = min(5000, max(1, (int)($_GET['limit'] ?? 200))); // 5000 — «все» (журнал хранится ограниченное число дней)
         $where = ['broker_id = ?'];
         $params = [$brokerId];
         if ($after) { $where[] = 'id > ?'; $params[] = $after; }

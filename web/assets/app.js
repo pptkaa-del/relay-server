@@ -228,7 +228,7 @@ const App = (() => {
   }
 
   /** Сколько последних записей журналов показывать (по умолчанию 20; выбор запоминается в браузере) */
-  const LOG_LIMITS = [20, 50, 100, 200, 500];
+  const LOG_LIMITS = [20, 50, 100, 200, 500, 5000]; // 5000 — «все»
   function logLimit() {
     let n = 20;
     try { n = +localStorage.getItem('relay-log-limit') || 20; } catch (e) {}
