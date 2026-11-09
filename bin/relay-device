@@ -3,6 +3,8 @@
 #
 #   sudo relay-device add  <ID> ["Название"] ["Адрес"]  — добавить плату
 #   sudo relay-device del  <ID>                         — удалить доступ платы к брокеру
+#   sudo relay-device add-many <ID,ID,…>                — учётные записи MQTT сразу для многих плат
+#                                                         (ACL и перечитывание брокера — один раз; БД не трогает)
 #   sudo relay-device list                              — список плат
 #   sudo relay-device pass <ID>                         — показать MQTT-логин и пароль платы
 #   sudo relay-device sync-acl                          — пересобрать ACL из файла паролей
@@ -93,6 +95,19 @@ case "${1:-}" in
         echo "  MQTT логин:  relay-$id"
         echo "  MQTT пароль: $pass"
         echo "  Топик команд: com/$id"
+        ;;
+    add-many)
+        [[ "${2:-}" =~ ^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9})*$ ]] || die "использование: add-many <ID,ID,…>"
+        n=0
+        IFS=, read -r -a ids <<< "$2"
+        for id in "${ids[@]}"; do
+            mosquitto_passwd -b "$PASSWD" "relay-$id" "$(device_pass "$id")" 2>/dev/null || die "mosquitto_passwd: не удалось записать $PASSWD (плата $id)"
+            n=$((n + 1))
+        done
+        chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
+        sync_acl
+        reload_mosquitto
+        echo "Учётные записи MQTT созданы для плат: $n."
         ;;
     del)
         check_id "${2:-}"

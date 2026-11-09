@@ -2,7 +2,7 @@
 # Обёртка для веб-панели: её (и только её) www-data может запускать через sudo.
 # Правило sudo без шаблонов в аргументах работает и в классическом sudo, и в sudo-rs
 # (Ubuntu 25.10+), который не поддерживает «команда *» и «Defaults!команда».
-# Разрешены только:  add <ID> [название] [адрес],  del <ID>,  block <ID>,  unblock <ID>
+# Разрешены только:  add <ID> [название] [адрес],  add-many <ID,ID,…>,  del <ID>,  block <ID>,  unblock <ID>
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -17,12 +17,19 @@ case "${1:-}" in
         valid_id "$2" || die "неверный ID платы"
         exec /usr/local/sbin/relay-device add "$2" "$(clean "${3:-}")" "$(clean "${4:-}")"
         ;;
+    add-many)
+        [ $# -eq 2 ] || die "использование: add-many <ID,ID,…>"
+        [ ${#2} -le 3000 ] && [[ "$2" =~ ^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9})*$ ]] || die "неверный список ID"
+        IFS=, read -r -a ids <<< "$2"
+        for i in "${ids[@]}"; do valid_id "$i" || die "неверный ID платы $i"; done
+        exec /usr/local/sbin/relay-device add-many "$2"
+        ;;
     del|block|unblock)
         [ $# -eq 2 ] || die "использование: $1 <ID>"
         valid_id "$2" || die "неверный ID платы"
         exec /usr/local/sbin/relay-device "$1" "$2"
         ;;
     *)
-        die "разрешены только add, del, block и unblock"
+        die "разрешены только add, add-many, del, block и unblock"
         ;;
 esac

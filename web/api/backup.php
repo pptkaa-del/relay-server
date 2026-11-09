@@ -174,6 +174,7 @@ switch ($action) {
 
     /* ---------------- прочитать файл ---------------- */
     case 'preview':
+        session_write_close(); // чтение файла может занять время — не блокируем остальные запросы панели
         $source = ($_POST['source'] ?? 'backup') === 'legacy' ? 'legacy' : 'backup';
         $f = $_FILES['file'] ?? null;
         if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
@@ -256,7 +257,9 @@ switch ($action) {
         if (!$pack || ($pack['login'] ?? '') !== $login || time() - (int)$pack['time'] > 3600) {
             relay_json(['error' => 'Данные проверки устарели — выберите файл и нажмите «Проверить» ещё раз'], 400);
         }
+        session_write_close(); // загрузка многих устройств не должна блокировать остальную панель
         @set_time_limit(0);
+        ignore_user_abort(true); // если вкладку закроют, загрузка всё равно доведётся до конца
         $onlyNew = ($_POST['mode'] ?? 'all') === 'new';
         $sel = (string)($_POST['ids'] ?? 'all');
         $ids = $sel === 'all' ? array_map('intval', array_keys($pack['items']))
@@ -286,13 +289,10 @@ switch ($action) {
             $name = trim((string)($g['name_obj'] ?? '')) ?: "Устройство $id";
             $addr = trim((string)($g['address'] ?? ''));
             if ($isNew) {
-                // учётная запись MQTT + строка general_info (как «Добавить устройство»)
-                [$code] = relay_device_cli(['add', (string)$id, mb_substr($name, 0, 200), mb_substr($addr, 0, 300)]);
-                if ($code !== 0) {
-                    $noMqtt[] = $id;
-                    relay_q($connect, "INSERT IGNORE INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
-                                       VALUES (?, ?, ?, '', 'Реле 1', 'Реле 2', 'Реле 3', 'Реле 4')", [$id, $name, $addr]);
-                }
+                // строка в панели сразу; учётные записи MQTT — после цикла одной командой для всех новых
+                relay_q($connect, "INSERT IGNORE INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
+                                   VALUES (?, ?, ?, '', 'Реле 1', 'Реле 2', 'Реле 3', 'Реле 4')", [$id, $name, $addr]);
+                relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
             }
             // все известные колонки из файла; NULL в NOT NULL-колонку не пишем
             $set = [];
@@ -318,6 +318,13 @@ switch ($action) {
                 }
             }
             $isNew ? $created[] = $id : $updated[] = $id;
+        }
+        // учётные записи MQTT новых устройств: одна команда на порцию (ACL и перечитывание брокера — один раз)
+        foreach (array_chunk($created, 200) as $chunk) {
+            [$code, $out] = relay_device_cli(['add-many', implode(',', $chunk)]);
+            if ($code !== 0) {
+                array_push($noMqtt, ...$chunk);
+            }
         }
         @unlink($path);
         relay_json(['ok' => true, 'created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'no_mqtt' => $noMqtt]);
