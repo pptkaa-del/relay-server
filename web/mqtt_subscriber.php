@@ -92,6 +92,23 @@ function checkBreakIn(mysqli $c, int $id, string $source): void
     writeLog("ВЗЛОМ ДВЕРИ: устройство $id ($source)", 'WARN');
 }
 
+/** Тревога «АКБ ниже 6 В»: событие при переходе через порог (флаг devices.bat_low — чтобы не повторять). */
+function checkBatLow(mysqli $c, int $id): void
+{
+    $v = relay_device_voltage($c, $id);
+    $res = relay_q($c, 'SELECT bat_low FROM devices WHERE id = ?', [$id]);
+    $was = $res instanceof mysqli_result ? (int)(mysqli_fetch_row($res)[0] ?? 0) : 0;
+    $low = $v !== null && $v < RELAY_BAT_LOW_V;
+    if ($low && !$was) {
+        relay_q($c, 'UPDATE devices SET bat_low = 1 WHERE id = ?', [$id]);
+        relay_event($c, $id, 'alarm', sprintf('Тревога: напряжение АКБ ниже %.0f В (%.1f В)', RELAY_BAT_LOW_V, $v), 'error', ['voltage' => $v]);
+        writeLog("АКБ: устройство $id — " . sprintf('%.1f', $v) . ' В', 'WARN');
+    } elseif (!$low && $was) {
+        relay_q($c, 'UPDATE devices SET bat_low = 0 WHERE id = ?', [$id]);
+        relay_event($c, $id, 'alarm_clear', $v === null ? 'Тревога АКБ снята' : sprintf('Напряжение АКБ восстановлено (%.1f В)', $v), 'success');
+    }
+}
+
 function handleStat(array $d, bool $retained): void
 {
     $c = db();
@@ -231,6 +248,7 @@ function handleStat(array $d, bool $retained): void
         relay_q($c, 'INSERT INTO relay_states (device_id, relay_num, state, updated_at) VALUES (?, ?, ?, ?)
                      ON DUPLICATE KEY UPDATE state = VALUES(state), updated_at = VALUES(updated_at)', [$id, $i, $r[$i], $ts]);
     }
+    checkBatLow($c, $id);
     writeLog("STAT: $id r=" . implode('', $r) . " stat=$stat sl=$sl alarm=$alarm");
 }
 
@@ -310,7 +328,11 @@ function checkTimeouts(): void
     foreach ($rows as $row) {
         $id = (int)$row['id'];
         relay_q($c, "UPDATE devices SET conn_state = 'offline' WHERE id = ?", [$id]);
-        relay_event($c, $id, 'offline', 'Нет связи: данных от устройства нет с ' . date('d.m H:i:s', strtotime($row['last_seen'])), 'warning');
+        $v = relay_device_voltage($c, $id);
+        $v !== null && $v < RELAY_BAT_LOW_V
+            // перед пропаданием связи АКБ была ниже 6 В — устройство отключилось по питанию
+            ? relay_event($c, $id, 'offline', sprintf('Отключено по питанию: АКБ %.1f В, данных нет с ', $v) . date('d.m H:i:s', strtotime($row['last_seen'])), 'error')
+            : relay_event($c, $id, 'offline', 'Нет связи: данных от устройства нет с ' . date('d.m H:i:s', strtotime($row['last_seen'])), 'warning');
         writeLog("TIMEOUT: устройство $id — нет данных более " . RELAY_OFFLINE_AFTER . ' с', 'WARN');
     }
 }

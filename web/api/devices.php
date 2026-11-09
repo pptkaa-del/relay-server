@@ -249,6 +249,11 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['online'] = $fresh && $d['status'] !== 0;
         $d['state'] = $d['last_seen_ts'] === null ? 'never'
             : (!$d['online'] ? 'offline' : ($d['status'] === 2 ? 'error' : 'online')); // признак «питание от АКБ» не показывается
+        // АКБ ниже 6 В: на связи — тревога; пропала связь — «отключено по питанию»
+        $d['bat_low'] = $d['bat_on'] && $d['bat_voltage'] !== null && $d['bat_voltage'] < RELAY_BAT_LOW_V;
+        if ($d['state'] === 'offline' && $d['bat_low']) {
+            $d['state'] = 'power_off';
+        }
         $out[] = $d;
     }
     return $out;
@@ -257,11 +262,13 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
 switch ($action) {
     case 'list':
         $devices = device_rows($connect);
-        $sum = ['total' => count($devices), 'online' => 0, 'offline' => 0, 'never' => 0];
+        $sum = ['total' => count($devices), 'online' => 0, 'offline' => 0, 'never' => 0, 'bat_low' => 0, 'power_off' => 0];
         foreach ($devices as $d) {
             if ($d['state'] === 'never') $sum['never']++;
             elseif ($d['online']) $sum['online']++;
+            elseif ($d['state'] === 'power_off') $sum['power_off']++;
             else $sum['offline']++;
+            if ($d['online'] && $d['bat_low']) $sum['bat_low']++;
         }
         $last = mysqli_fetch_assoc(mysqli_query($connect, "SELECT MAX(ts) AS ts, UNIX_TIMESTAMP(MAX(ts)) AS t FROM mqtt_messages WHERE broker_id = 1 AND direction = 'in'"));
         relay_json(['devices' => $devices, 'summary' => $sum, 'last_message_ts' => $last['t'] ? (int)$last['t'] : null, 'now' => time(),

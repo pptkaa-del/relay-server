@@ -94,7 +94,7 @@ h2 { font-size: 15px; font-weight: 600; }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-head h2 { flex: 1; }
 .card-body { padding: 16px; }
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .tile { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; text-align: left; font: inherit; color: inherit; }
 .tile:hover { border-color: var(--line-strong); }
 .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -282,7 +282,7 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 
 /* ---------- Адаптив ---------- */
 @media (max-width: 1100px) {
-  .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .layout-2 { grid-template-columns: 1fr; }
   .layout-2 > .stack { display: contents; }
   .o-last { order: 1; } .o-relays { order: 2; } .o-lock { order: 3; } .o-bat { order: 4; } .o-comments { order: 5; } .o-logs { order: 6; } .o-info { order: 7; }
@@ -581,3 +581,18 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dev-nav { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; }
 .dev-nav .btn { height: 26px; font-size: 12.5px; }
+
+/* тревога «АКБ ниже 6 В» и «отключено по питанию» */
+:root { --power-off: #7c2d12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --power-off: #c2410c; } }
+:root[data-theme="dark"] { --power-off: #c2410c; }
+.dot.bat_low { background: var(--bad); }
+.dot.power_off { background: var(--power-off); }
+.badge.power_off { background: color-mix(in srgb, var(--power-off) 14%, transparent); color: var(--power-off); }
+.tile.lit[data-f="batlow"] { border-color: var(--bad); background: var(--bad-soft); box-shadow: 0 0 0 3px var(--bad-soft); }
+.tile.lit[data-f="batlow"] .tile-value { color: var(--bad); }
+.tile.lit[data-f="poweroff"] { border-color: var(--power-off); box-shadow: 0 0 0 3px color-mix(in srgb, var(--power-off) 18%, transparent); }
+.tile.lit[data-f="poweroff"] .tile-value { color: var(--power-off); }
+.tile.lit[data-f="batlow"] .tile-label .dot { animation: pin-alarm-red 1.2s ease-in-out infinite; }
+@keyframes pin-alarm-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .6); } 50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
+.dev-panel.state-power_off { border-top: 3px solid var(--power-off); }

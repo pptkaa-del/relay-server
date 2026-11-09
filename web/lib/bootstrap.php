@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.34';
+const RELAY_VERSION       = '3.35';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -415,6 +415,28 @@ const RELAY_BAT_TYPES = [
 ];
 const RELAY_BAT_V_LOW  = 6.0;  // АКБ 12 В (по умолчанию)
 const RELAY_BAT_V_HIGH = 15.0;
+
+/** Ниже этого напряжения АКБ — тревога; если затем пропала связь — «отключено по питанию» (для 12 и 24 В) */
+const RELAY_BAT_LOW_V = 6.0;
+
+/**
+ * Последнее напряжение АКБ устройства по калибровке, или null (контроль выключен, версия 1, нет данных).
+ * Версия 1-1: АЦП АКБ — в поле сигнала.
+ */
+function relay_device_voltage(mysqli $db, int $deviceId): ?float
+{
+    $res = @relay_q($db, 'SELECT COALESCE(g.bat_monitor, 1) AS bat_monitor, COALESCE(g.hw_version, d.version) AS ver, g.bat_type,
+                                 g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26, d.bat_adc, d.signal_level
+                            FROM general_info g JOIN devices d ON d.id = g.id WHERE g.id = ?', [$deviceId]);
+    $r = $res instanceof mysqli_result ? mysqli_fetch_assoc($res) : null;
+    if (!$r || !(int)$r['bat_monitor'] || (int)$r['ver'] === 1) {
+        return null;
+    }
+    $type = relay_bat_type($r['bat_type'] ?? 12);
+    $t = RELAY_BAT_TYPES[$type];
+    $adc = (int)$r['ver'] === RELAY_V11 ? $r['signal_level'] : $r['bat_adc'];
+    return relay_battery_voltage($adc, $r[$t['col_low']], $r[$t['col_high']], $type);
+}
 
 function relay_bat_type($t): int
 {

@@ -99,6 +99,7 @@ const App = (() => {
   const STATE = {
     online: ['online', 'На связи'], offline: ['offline', 'Нет связи'], error: ['error', 'Ошибка устройства'],
     alarm: ['alarm', 'Питание от АКБ'], never: ['never', 'Не выходило на связь'],
+    power_off: ['power_off', 'Отключено по питанию'],
   };
   const stateBadge = st => { const [c, t] = STATE[st] || STATE.never; return `<span class="badge ${c}"><span class="dot ${c}"></span>${t}</span>`; };
   const RSTATE = { 0: 'выкл', 1: 'вкл', 2: 'ошибка' };

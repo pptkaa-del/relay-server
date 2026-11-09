@@ -14,7 +14,9 @@
     const q = query.trim().toLowerCase();
     let list = devices.filter(d => {
       if (filter === 'online' && !d.online) return false;
-      if (filter === 'offline' && (d.online || d.state === 'never')) return false;
+      if (filter === 'offline' && (d.online || d.state === 'never' || d.state === 'power_off')) return false;
+      if (filter === 'batlow' && !(d.online && d.bat_low)) return false;
+      if (filter === 'poweroff' && d.state !== 'power_off') return false;
       if (filter === 'never' && d.state !== 'never') return false;
       return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q) || (d.owner || '').toLowerCase().includes(q);
     });
@@ -54,7 +56,8 @@
       <span class="item" title="Последнее поступление данных: ${seen ? fmtTime(seen) : 'нет'}">${ICONS.clock}<span data-ago="${seen || ''}">${ago(seen)}</span></span>
       <span class="item">${signalBars(d.signal_level)}</span>
       ${App.batteryHtml(d) ? `<span class="item">${App.batteryHtml(d)}</span>` : ''}
-      ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}`;
+      ${d.door_state === 1 ? '<span class="badge warn">дверь открыта</span>' : ''}
+      ${d.bat_low && d.online ? '<span class="badge bad">тревога: АКБ ниже 6 В</span>' : ''}`;
   };
 
   // список плат слева
@@ -63,7 +66,7 @@
     const lockPip = d.has_lock ? `<i class="lock-pip ${d.door_state === 1 ? 'open' : d.door_state === 0 ? 'closed' : 'na'}" title="Замок: ${d.door_state == null ? 'нет данных' : d.door_state === 1 ? 'дверь открыта' : 'дверь закрыта'}"></i>` : '';
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
-      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}<span class="mono muted">#${d.id}</span></div>
+      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}<span class="mono muted">#${d.id}</span></div>
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}${lockPip}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
@@ -158,6 +161,9 @@
     const j = await api('/api/devices.php', { action: 'list' });
     devices = j.devices;
     for (const [k, v] of Object.entries(j.summary)) { const el = $(`[data-k="${k}"]`); if (el) el.textContent = v; }
+    // тревожные плитки подсвечиваются, когда в них есть устройства
+    $('[data-f="batlow"]').classList.toggle('lit', j.summary.bat_low > 0);
+    $('[data-f="poweroff"]').classList.toggle('lit', j.summary.power_off > 0);
     $('#lastmsg').innerHTML = j.last_message_ts
       ? `Последнее сообщение от устройств: <b data-ago="${j.last_message_ts}">${ago(j.last_message_ts)}</b> · ${fmtTime(j.last_message_ts)}`
       : 'Сообщений от устройств ещё не было';
