@@ -32,7 +32,7 @@ layout_head('Устройства', 'devices', $login);
 
 <div class="toolbar">
   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input class="input" id="q" type="search" placeholder="Поиск по названию, адресу или ID"></label>
+    <input class="input" id="q" type="search" placeholder="Поиск: название, адрес, для кого, ID"></label>
   <span class="spacer"></span>
   <div class="seg" id="sort">
     <button data-s="id" class="on">По ID</button><button data-s="name">По имени</button><button data-s="seen">По данным</button>
@@ -79,6 +79,7 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Название объекта<input class="input" name="name" maxlength="200" placeholder="Шкаф ТП-12"></label>
         <label class="field">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
         <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" placeholder="+79997777777" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
+        <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="например: ООО «Ромашка», ИП Иванов, частный дом"></label>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60" placeholder="Реле 1"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
@@ -131,6 +132,7 @@ layout_head('Устройства', 'devices', $login);
         <label class="field full">Номера устройств<input class="input mono" name="ids" required autocomplete="off" placeholder="например: 1, 3, 5-10">
           <span class="hint">через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</span></label>
         <div class="full bulk-preview" id="bulk-preview"></div>
+        <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="не менять"></label>
         <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="не менять"></label>

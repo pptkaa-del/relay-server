@@ -50,7 +50,7 @@
     const d = dev;
     document.title = `${d.name} · off-on service`;
     $('#d-name').textContent = d.name;
-    $('#d-addr').textContent = d.address || 'Адрес не указан';
+    $('#d-addr').textContent = (d.address || 'Адрес не указан') + (d.owner ? ' · ' + d.owner : '');
     $('#d-badge').innerHTML = stateBadge(d.state) + (d.break_in ? ' <span class="badge breakin">ВЗЛОМ ДВЕРИ</span>' : '');
     $('#breakin').innerHTML = d.break_in ? `<div class="breakin-banner"><b>ВЗЛОМ ДВЕРИ</b>
       <span>Дверь открылась без команды «Открыть» ${d.break_in.source === 'door' ? '(датчик двери)' : '(замок, реле 4)'} · ${fmtTime(d.break_in.ts)} · ${ago(d.break_in.ts)}</span>
@@ -95,6 +95,7 @@
     const lc = d.last_command;
     $('#info').innerHTML = `
       <dt>ID устройства</dt><dd class="mono">${d.id}</dd>
+      <dt>Для кого установлено</dt><dd>${d.owner ? esc(d.owner) : '<span class="muted">не указано</span>'}</dd>
       <dt>SIM-карта</dt><dd>${d.sim_phone ? `<a class="mono" href="tel:${esc(d.sim_phone)}">${App.fmtPhone(d.sim_phone)}</a>` : '<span class="muted">не указан</span>'}</dd>
       <dt>MQTT логин</dt><dd class="mono">relay-${d.id}</dd>
       <dt>Топик команд</dt><dd class="mono">com/${d.id}</dd>
@@ -246,6 +247,7 @@
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
     form.elements.sim_phone.value = dev.sim_phone || '';
+    form.elements.owner.value = dev.owner || '';
     form.elements.hw_version.value = dev.hw_version ? String(dev.hw_version) : '';
     form.elements.bat_monitor.checked = dev.bat_monitor !== false;
     form.dispatchEvent(new Event('hw-version'));
@@ -263,7 +265,7 @@
   dlg.addEventListener('close', async () => {
     if (dlg.returnValue !== 'save') return;
     const p = { action: 'update', id };
-    for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = form.elements[k].value;
+    for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = form.elements[k].value;
     p.bat_monitor = form.elements.bat_monitor.checked && form.elements.hw_version.value !== '1' ? '1' : '0';
     p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';

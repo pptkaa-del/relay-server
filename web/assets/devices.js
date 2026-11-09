@@ -16,7 +16,7 @@
       if (filter === 'online' && !d.online) return false;
       if (filter === 'offline' && (d.online || d.state === 'never')) return false;
       if (filter === 'never' && d.state !== 'never') return false;
-      return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q);
+      return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q) || (d.owner || '').toLowerCase().includes(q);
     });
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     else if (sort === 'seen') list.sort((a, b) => (b.last_data_ts || 0) - (a.last_data_ts || 0));
@@ -99,7 +99,7 @@
     return `<section class="card dev-panel state-${d.state}">
       <div class="card-head">
         <button class="btn sm ghost" data-sel="0" title="Вернуться к карте">← Карта</button>
-        <div class="dev-panel-title"><h2><a href="/device.php?id=${d.id}">${esc(d.name)}</a></h2><div class="muted">${esc(d.address || 'адрес не указан')}</div></div>
+        <div class="dev-panel-title"><h2><a href="/device.php?id=${d.id}">${esc(d.name)}</a></h2><div class="muted">${esc(d.address || 'адрес не указан')}${d.owner ? ' · <span class="owner">' + esc(d.owner) + '</span>' : ''}</div></div>
         ${stateBadge(d.state)}
       </div>
       <div class="card-body">
@@ -256,6 +256,7 @@
     const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
     p.relay4_lock = bulkForm.elements.relay4_lock.value;
+    p.owner = bulkForm.elements.owner.value.trim();
     p.hw_version = bulkForm.elements.hw_version.value;
     p.bat_monitor = bulkForm.elements.bat_monitor.value;
     const res = $('#bulk-result'), btn = $('#bulk-submit');
@@ -293,7 +294,7 @@
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = F(k).value.trim();
     p.bat_monitor = F('bat_monitor').checked && F('hw_version').value !== '1' ? '1' : '0';
     p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';

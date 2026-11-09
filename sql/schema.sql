@@ -375,3 +375,9 @@ SELECT e.`user_login`, 5, e.`device_id`, 0, e.`ts`
 ALTER TABLE `general_info`
     ADD COLUMN IF NOT EXISTS `hw_version` TINYINT(4) DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS `bat_monitor` TINYINT(1) NOT NULL DEFAULT 1;
+
+-- ---------------------------------------------------------------------------
+-- v3.17: для кого установлено устройство (заказчик / владелец)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `owner` VARCHAR(200) NOT NULL DEFAULT '';

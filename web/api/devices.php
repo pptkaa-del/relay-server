@@ -114,7 +114,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
                COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
-               COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone,
+               COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone, COALESCE(g.owner, '') AS owner,
                g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
@@ -259,6 +259,7 @@ switch ($action) {
         $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
         $off = disabled_from_post();
         $sim = sim_phone_from_post();
+        $owner = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200); // для кого установлено
         relay_q($connect, 'INSERT INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                            ON DUPLICATE KEY UPDATE name_obj = VALUES(name_obj), address = VALUES(address), coordinates = VALUES(coordinates),
@@ -268,9 +269,9 @@ switch ($action) {
              $f('relay1', 60) ?: 'Реле 1', $f('relay2', 60) ?: 'Реле 2', $f('relay3', 60) ?: 'Реле 3', $f('relay4', 60) ?: 'Реле 4']);
         $hw = hw_version_from_post();
         $batOn = ($_POST['bat_monitor'] ?? '1') === '1' ? 1 : 0;
-        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, hw_version = ?, bat_monitor = ?,
+        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$batType, $lock4, $off, $sim, $hw, $batOn, $calLo, $calHi, $id]);
+            [$batType, $lock4, $off, $sim, $owner, $hw, $batOn, $calLo, $calHi, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
         relay_event($connect, $id, 'info', 'Изменены данные устройства: название, адрес, подписи реле, АКБ ' . $batType . ' В'
             . ($lock4 ? ', реле 4 — замок' : '') . ($off ? ', отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : ''),
@@ -315,6 +316,7 @@ switch ($action) {
         $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
         $off = disabled_from_post();
         $sim = sim_phone_from_post();
+        $owner = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200); // для кого установлено
         $hwAdd = hw_version_from_post();
         $batAdd = ($_POST['bat_monitor'] ?? '1') === '1' ? 1 : 0;
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
@@ -330,9 +332,9 @@ switch ($action) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
         relay_q($connect, "UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, hw_version = ?, bat_monitor = ?,
+                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $sim, $hwAdd, $batAdd, $calLo, $calHi, $id]);
+            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $sim, $owner, $hwAdd, $batAdd, $calLo, $calHi, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
@@ -359,6 +361,12 @@ switch ($action) {
                 $names[] = "реле $i — «{$v}»";
             }
         }
+        $ownerNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200);
+        if ($ownerNew !== '') {
+            $set[] = 'owner = ?';
+            $params[] = $ownerNew;
+            $names[] = "для кого установлено — «{$ownerNew}»";
+        }
         $hwMode = (string)($_POST['hw_version'] ?? 'keep');
         if (in_array($hwMode, ['auto', '1', '2', '3'], true)) {
             $set[] = 'hw_version = ?';
@@ -378,7 +386,7 @@ switch ($action) {
             $names[] = $lockMode === '1' ? 'реле 4 — замок двери' : 'реле 4 — обычное реле';
         }
         if (!$set) {
-            relay_json(['error' => 'Укажите, что изменить: названия реле, версию, контроль АКБ или «Реле 4 — замок двери»'], 400);
+            relay_json(['error' => 'Укажите, что изменить: для кого установлено, названия реле, версию, контроль АКБ или «Реле 4 — замок двери»'], 400);
         }
         $updated = $missing = [];
         foreach ($ids as $id) {

@@ -86,6 +86,7 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field full">Адрес<input class="input" name="address" maxlength="300"></label>
         <label class="field">Координаты<input class="input" name="coordinates" maxlength="100" placeholder="55.7558, 37.6173"></label>
         <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" placeholder="+79997777777" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
+        <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="например: ООО «Ромашка», ИП Иванов, частный дом"></label>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
