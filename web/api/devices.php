@@ -115,7 +115,9 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
                COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
                COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone, COALESCE(g.owner, '') AS owner,
-               g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor, COALESCE(g.lock_unused, 0) AS lock_unused, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
+               g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor,
+               (SELECT COUNT(*) FROM device_comments c WHERE c.device_id = x.id) AS comments_count,
+               (SELECT c.text FROM device_comments c WHERE c.device_id = x.id ORDER BY c.id DESC LIMIT 1) AS last_comment, COALESCE(g.lock_unused, 0) AS lock_unused, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
@@ -176,6 +178,8 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['hw_version'] = $d['hw_version'] === null ? null : (int)$d['hw_version'];
         $d['dev_version'] = $d['hw_version'] ?? $d['version'];
         $d['bat_monitor'] = (int)$d['bat_monitor'] === 1;
+        $d['comments_count'] = (int)$d['comments_count'];
+        $d['last_comment'] = $d['last_comment'] === null ? null : mb_substr($d['last_comment'], 0, 200);
         // контроль АКБ: выключен в настройках или версия 1 (в её пакете нет АКБ) — напряжение не показываем
         $d['bat_on'] = $d['bat_monitor'] && ($d['dev_version'] === null || $d['dev_version'] >= 2);
         if (!$d['bat_on']) {

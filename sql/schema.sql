@@ -387,3 +387,15 @@ ALTER TABLE `general_info`
 -- ---------------------------------------------------------------------------
 ALTER TABLE `general_info`
     ADD COLUMN IF NOT EXISTS `lock_unused` TINYINT(1) NOT NULL DEFAULT 0;
+
+-- ---------------------------------------------------------------------------
+-- v3.26: комментарии к устройствам
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `device_comments` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `device_id` INT(11) NOT NULL,
+    `login` VARCHAR(64) DEFAULT NULL,
+    `text` TEXT NOT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_device` (`device_id`, `id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -90,7 +90,11 @@ function legacy_item(array $g, ?array $akb, ?string $sim): array
     if (strlen($d) === 10) {
         $it['sim_phone'] = '+7' . $d;
     }
-    $it['_info'] = $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
+    $note = trim((string)($g['note'] ?? ''));
+    if ($note !== '') {
+        $it['_note'] = $note; // примечание старой системы → комментарий к устройству
+    }
+    $it['_info'] = ($note !== '' ? "комментарий «{$note}» · " : '') . $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
     return $it;
 }
 
@@ -306,6 +310,13 @@ switch ($action) {
             }
             relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, mb_substr($addr, 0, 100), $id]);
             relay_event($connect, $id, 'info', ($isNew ? 'Устройство добавлено ' : 'Данные устройства обновлены ') . $label, 'info', null, $login);
+            // примечание старой системы — комментарием (без повторов при повторной загрузке)
+            if (!empty($g['_note'])) {
+                $dup = relay_q($connect, 'SELECT 1 FROM device_comments WHERE device_id = ? AND text = ?', [$id, $g['_note']]);
+                if ($dup instanceof mysqli_result && mysqli_num_rows($dup) === 0) {
+                    @relay_q($connect, 'INSERT INTO device_comments (device_id, login, text) VALUES (?, ?, ?)', [$id, 'старая система', $g['_note']]);
+                }
+            }
             $isNew ? $created[] = $id : $updated[] = $id;
         }
         @unlink($path);

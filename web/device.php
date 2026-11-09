@@ -71,6 +71,16 @@ layout_head("Устройство #$id", 'devices', $login);
         <div class="seg" id="bat-range"><button data-h="24" class="on">24 ч</button><button data-h="168">7 дн</button></div></div>
       <div class="card-body" id="battery"><span class="muted">Загрузка…</span></div>
     </section>
+    <section class="card o-comments" id="comments-card">
+      <div class="card-head"><h2>Комментарии</h2><span class="muted" id="comments-count"></span></div>
+      <div class="card-body">
+        <form id="comment-form" class="comment-form">
+          <textarea class="input" name="text" rows="2" maxlength="2000" placeholder="Новый комментарий" required></textarea>
+          <div class="btn-row"><button class="btn primary sm" type="submit">Добавить</button></div>
+        </form>
+        <ul class="comments" id="comments"></ul>
+      </div>
+    </section>
     <section class="card o-info">
       <div class="card-head"><h2>Сведения</h2></div>
       <div class="card-body"><dl class="kv" id="info"></dl></div>

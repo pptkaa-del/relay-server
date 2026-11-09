@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.26';
+const RELAY_VERSION       = '3.27';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -126,7 +126,7 @@ const RELAY_ROLES = [
     'user'  => 'Пользователь',    // только реле, выданные администратором (просмотр или управление)
 ];
 /** Страницы и API, доступные пользователю (не администратору). Остальное — только администратору. */
-const RELAY_USER_SCRIPTS = ['/index.php', '/device.php', '/api/devices.php', '/api/device_log.php', '/api/users.php'];
+const RELAY_USER_SCRIPTS = ['/index.php', '/device.php', '/api/devices.php', '/api/device_log.php', '/api/users.php', '/api/comments.php'];
 const RELAY_LOGIN_RE = '/^[A-Za-z0-9_.@-]{1,64}$/';
 const RELAY_MIN_PASS = 6;
 

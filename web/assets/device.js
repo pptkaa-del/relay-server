@@ -290,6 +290,38 @@
     catch (e) { toast(e.message, 'err'); }
   });
 
+  /* ---------- Комментарии ---------- */
+  async function loadComments() {
+    let j;
+    try { j = await api('/api/comments.php', { action: 'list', id }); } catch (e) { $('#comments').innerHTML = `<li class="muted">${esc(e.message)}</li>`; return; }
+    const list = j.comments;
+    $('#comments-count').textContent = list.length ? String(list.length) : '';
+    $('#comments').innerHTML = list.length ? list.map(c => `<li>
+        <div class="comment-head"><b>${esc(c.login || '—')}</b><span>${fmtTime(c.ts)}</span><span class="spacer"></span>
+          ${c.can_delete ? `<button class="comment-del" data-del-comment="${c.id}" title="Удалить комментарий">удалить</button>` : ''}</div>
+        <div class="comment-text">${esc(c.text)}</div></li>`).join('')
+      : '<li class="muted" style="background:none;border:0;padding:0">Комментариев пока нет</li>';
+  }
+  $('#comment-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const ta = e.target.elements.text, btn = e.target.querySelector('[type=submit]');
+    if (!ta.value.trim()) return;
+    btn.disabled = true;
+    try { await api('/api/comments.php', { action: 'add', id, text: ta.value }, true); ta.value = ''; loadComments(); }
+    catch (er) { toast(er.message, 'err'); }
+    finally { btn.disabled = false; }
+  });
+  $('#comment-form').elements.text.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#comment-form').requestSubmit();
+  });
+  $('#comments').addEventListener('click', async e => {
+    const b = e.target.closest('[data-del-comment]'); if (!b) return;
+    if (!confirm('Удалить комментарий?')) return;
+    try { await api('/api/comments.php', { action: 'delete', comment_id: b.dataset.delComment }, true); loadComments(); }
+    catch (er) { toast(er.message, 'err'); }
+  });
+  loadComments();
+
   setInterval(() => $$('[data-ago]').forEach(el => { const t = +el.dataset.ago; if (t) el.textContent = ago(t); }), 1000);
   load(); loadLog(true);
   App.every(5000, load);

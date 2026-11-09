@@ -110,6 +110,9 @@
         <div class="relay-cards">${relays}</div>
         ${lock}
         ${note ? `<p class="muted" style="margin:12px 0 0;font-size:13px">${note}</p>` : ''}
+        ${d.comments_count ? `<div class="dev-comment">💬 <span class="txt" title="${esc(d.last_comment || '')}">${esc(d.last_comment || '')}</span>
+          <a href="/device.php?id=${d.id}#comments-card">все комментарии (${d.comments_count})</a></div>`
+          : `<div class="dev-comment"><a href="/device.php?id=${d.id}#comments-card">💬 добавить комментарий</a></div>`}
       </div>
       <div class="dev-foot">
         <a class="btn sm" href="/device.php?id=${d.id}">Подробнее: журнал, АКБ, настройки</a>
