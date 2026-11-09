@@ -17,6 +17,83 @@ if ($action !== 'download' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
 
+/**
+ * Координаты старой системы → «широта, долгота» с точкой: «37,55072; 55,703292» (через «;» — долгота первой,
+ * десятичная запятая) и «55.749912, 37.668702» (широта первой). Нераспознанное — как есть.
+ */
+function legacy_coords(?string $raw): string
+{
+    $s = trim((string)$raw);
+    if ($s === '') {
+        return '';
+    }
+    $lonFirst = str_contains($s, ';');
+    if ($lonFirst || preg_match('/^-?\d+,\d+\s+-?\d+,\d+$/', $s)) {
+        $s = str_replace(',', '.', $s);
+    }
+    if (!preg_match_all('/-?\d+(?:\.\d+)?/', $s, $m) || count($m[0]) !== 2) {
+        return trim((string)$raw);
+    }
+    [$a, $b] = $m[0];
+    return $lonFirst ? "$b, $a" : "$a, $b";
+}
+
+/**
+ * Устройство первоначальной системы → колонки general_info этой панели.
+ *   general_info: название, адрес, координаты, подписи реле («not_used» — реле отключено);
+ *   AKB (min — АЦП при 19 В, max — при 26 В): min > 700 — АКБ 24 В, иначе 12 В (точки 19/26 В пересчитываются в 6/15 В);
+ *        min или max = 1 — калибровку не подставлять; нет строки (или таблицы) AKB — контроль АКБ выключен;
+ *   SIM_number: номер SIM → +7XXXXXXXXXX.
+ */
+function legacy_item(array $g, ?array $akb, ?string $sim): array
+{
+    $id = (int)$g['id'];
+    $it = ['id' => (string)$id, 'name_obj' => trim((string)($g['name_obj'] ?? '')) ?: "Устройство $id",
+           'address' => trim((string)($g['address'] ?? '')), 'coordinates' => legacy_coords($g['coordinates'] ?? '')];
+    $off = 0;
+    for ($i = 1; $i <= 4; $i++) {
+        $n = trim((string)($g["name_reley_$i"] ?? ''));
+        if (strcasecmp($n, 'not_used') === 0) {
+            $off |= 1 << ($i - 1);
+            $n = '';
+        }
+        $it["name_reley_$i"] = $n !== '' ? $n : "Реле $i";
+    }
+    $it['relays_disabled'] = (string)$off;
+    $bat = 'контроль АКБ выключен';
+    if ($akb === null) {
+        $it['bat_monitor'] = '0';
+    } else {
+        $it['bat_monitor'] = '1';
+        $min = (int)$akb['min'];
+        $max = (int)$akb['max'];
+        if ($min === 1 || $max === 1 || $min === $max) {
+            $bat = 'АКБ без калибровки';
+        } elseif ($min > 700) {
+            $it += ['bat_type' => '24', 'cal_adc_19' => (string)$min, 'cal_adc_26' => (string)$max];
+            $bat = "АКБ 24 В ($min / $max)";
+        } else {
+            // 12 В: та же прямая через точки 19 и 26 В, пересчитанная в точки 6 и 15 В
+            $c6 = (int)round($min + (6 - 19) * ($max - $min) / 7);
+            $c15 = (int)round($min + (15 - 19) * ($max - $min) / 7);
+            $it += ['bat_type' => '12', 'cal_adc_19' => (string)$min, 'cal_adc_26' => (string)$max];
+            if ($c6 >= 0 && $c15 >= 0) {
+                $it += ['cal_adc_6' => (string)$c6, 'cal_adc_15' => (string)$c15];
+            }
+            $bat = "АКБ 12 В ($min / $max)";
+        }
+    }
+    $d = preg_replace('/\D+/', '', (string)$sim);
+    if (strlen($d) === 11 && ($d[0] === '7' || $d[0] === '8')) {
+        $d = substr($d, 1);
+    }
+    if (strlen($d) === 10) {
+        $it['sim_phone'] = '+7' . $d;
+    }
+    $it['_info'] = $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
+    return $it;
+}
+
 /** Временный файл с прочитанными данными (между «Проверить» и «Загрузить») */
 function import_tmp(string $token): string
 {
@@ -106,16 +183,33 @@ switch ($action) {
         }
         @set_time_limit(0);
         try {
-            $data = relay_sql_extract($f['tmp_name'], ['general_info', 'devices']);
+            $data = relay_sql_extract($f['tmp_name'], ['general_info', 'devices', 'AKB', 'SIM_number']);
         } catch (RuntimeException $e) {
             relay_json(['error' => 'Не удалось прочитать файл: ' . $e->getMessage()], 400);
         }
         // устройства: из general_info, а те, что есть только в devices, — по имени и месту оттуда
         $items = [];
-        foreach ($data['general_info'] as $g) {
-            $id = (int)($g['id'] ?? 0);
-            if ($id > 0) {
-                $items[$id] = $g;
+        if ($source === 'legacy') {
+            // первоначальная система: АКБ — из таблицы AKB, номер SIM — из SIM_number
+            $akb = $sims = [];
+            foreach ($data['AKB'] as $a) {
+                $akb[(int)($a['id'] ?? 0)] = $a;
+            }
+            foreach ($data['SIM_number'] as $n) {
+                $sims[(int)($n['id'] ?? 0)] = (string)($n['Number'] ?? '');
+            }
+            foreach ($data['general_info'] as $g) {
+                $id = (int)($g['id'] ?? 0);
+                if ($id > 0) {
+                    $items[$id] = legacy_item($g, $akb[$id] ?? null, $sims[$id] ?? null);
+                }
+            }
+        } else {
+            foreach ($data['general_info'] as $g) {
+                $id = (int)($g['id'] ?? 0);
+                if ($id > 0) {
+                    $items[$id] = $g;
+                }
             }
         }
         foreach ($data['devices'] as $d) {
@@ -145,10 +239,11 @@ switch ($action) {
         $list = [];
         foreach ($items as $id => $g) {
             $list[] = ['id' => $id, 'name' => (string)($g['name_obj'] ?? '') ?: "Устройство $id", 'address' => (string)($g['address'] ?? ''),
-                       'exists' => isset($existing[$id])];
+                       'exists' => isset($existing[$id]), 'info' => (string)($g['_info'] ?? '')];
         }
         relay_json(['token' => $token, 'source' => $source, 'devices' => $list,
-                    'found' => ['general_info' => count($data['general_info']), 'devices' => count($data['devices'])]]);
+                    'found' => ['general_info' => count($data['general_info']), 'devices' => count($data['devices']),
+                                'AKB' => count($data['AKB']), 'SIM_number' => count($data['SIM_number'])]]);
 
     /* ---------------- загрузить в БД ---------------- */
     case 'import':

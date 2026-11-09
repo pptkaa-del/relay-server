@@ -25,7 +25,7 @@
     $('#imp-summary').innerHTML = `Найдено устройств: <b>${n}</b> · новых: <b>${n - ex}</b> · уже есть в панели: <b>${ex}</b>`;
     $('#imp-rows').innerHTML = devices.map(d => `<tr>
       <td><input type="checkbox" data-id="${d.id}" checked></td><td class="mono">${d.id}</td>
-      <td>${esc(d.name)}</td><td class="muted">${esc(d.address || '—')}</td>
+      <td>${esc(d.name)}${d.info ? `<div class="muted" style="font-size:12px">${esc(d.info)}</div>` : ''}</td><td class="muted">${esc(d.address || '—')}</td>
       <td>${d.exists ? '<span class="badge info">есть</span>' : '<span class="badge success">новое</span>'}</td></tr>`).join('');
     $('#imp-preview').classList.remove('hidden');
   }
@@ -38,7 +38,9 @@
     try {
       const j = await post(fd);
       token = j.token; devices = j.devices;
-      setRes('ok', `Файл прочитан: строк general_info — ${j.found.general_info}, devices — ${j.found.devices}. Выберите устройства и нажмите «Загрузить выбранные».`);
+      setRes('ok', `Файл прочитан: general_info — ${j.found.general_info}, devices — ${j.found.devices}`
+        + (j.source === 'legacy' ? `, AKB — ${j.found.AKB}${j.found.AKB ? '' : ' (таблицы нет — контроль АКБ будет выключен)'}, SIM_number — ${j.found.SIM_number}` : '')
+        + '. Выберите устройства и нажмите «Загрузить выбранные».');
       render();
     } catch (er) { setRes('err', er.message); }
     finally { btn.disabled = false; }
