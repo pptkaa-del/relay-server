@@ -259,14 +259,16 @@
 
   const dlg = $('#edit'), form = $('#edit-form');
   // у каждого типа АКБ своя калибровка: 12 В — АЦП при 6/15 В, 24 В — при 19/26 В
-  function fillCal() {
+  /** keep = true: при смене типа АКБ введённые значения АЦП не трогаем, подставляем сохранённые только в пустые поля */
+  function fillCal(keep = false) {
     const t24 = form.elements.bat_type.value === '24';
-    form.elements.cal_low.value = (t24 ? dev.cal_adc_19 : dev.cal_adc_6) ?? '';
-    form.elements.cal_high.value = (t24 ? dev.cal_adc_26 : dev.cal_adc_15) ?? '';
+    const lo = (t24 ? dev.cal_adc_19 : dev.cal_adc_6) ?? '', hi = (t24 ? dev.cal_adc_26 : dev.cal_adc_15) ?? '';
+    if (!keep || form.elements.cal_low.value === '') form.elements.cal_low.value = lo;
+    if (!keep || form.elements.cal_high.value === '') form.elements.cal_high.value = hi;
   }
   App.bindBatType(form);
   App.bindHwVersion(form);
-  form.elements.bat_type.addEventListener('change', () => { if (dev) fillCal(); });
+  form.elements.bat_type.addEventListener('change', () => { if (dev) fillCal(true); });
   $('#b-edit').addEventListener('click', () => {
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
