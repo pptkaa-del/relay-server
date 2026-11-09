@@ -45,6 +45,7 @@
     const bi = d.break_in ? `<div class="map-alarm">ВЗЛОМ ДВЕРИ · ${ago(d.break_in.ts)}</div>` : '';
     return `<div class="map-pop"><b>${esc(d.name)}</b> <span class="muted">#${d.id}</span>${bi}
       <div>${esc(text)}</div>${d.address ? `<div class="muted">${esc(d.address)}</div>` : ''}
+      ${d.geo_auto ? '<div class="muted">координаты не заданы — точка поставлена по номеру устройства</div>' : ''}
       <div class="muted">данные: ${ago(d.last_data_ts)}</div>
       <a href="#${d.id}" class="map-open">Открыть устройство →</a></div>`;
   }

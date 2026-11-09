@@ -212,7 +212,9 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['break_in'] = $d['break_in_ts'] ? ['ts' => (int)$d['break_in_ts'], 'source' => $d['break_in_source']] : null;
         $d['can_ack'] = $admin || !empty($perms[$id][4]) || !empty($perms[$id][RELAY_LOCK]);
         unset($d['break_in_ts'], $d['break_in_source']);
-        $d['geo'] = parse_coords((string)$d['coordinates']);
+        // координаты не введены — ставим точку по номеру устройства: 55.<id>, 37.<id>
+        $d['geo_auto'] = trim((string)$d['coordinates']) === '';
+        $d['geo'] = $d['geo_auto'] ? [(float)('55.' . $id), (float)('37.' . $id)] : parse_coords((string)$d['coordinates']);
         $d['registered'] = (bool)$d['registered'];
         $fresh = $d['last_seen_ts'] !== null && $now - $d['last_seen_ts'] <= RELAY_OFFLINE_AFTER;
         $d['online'] = $fresh && $d['status'] !== 0;
