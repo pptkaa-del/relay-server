@@ -88,10 +88,10 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field">Координаты<input class="input" name="coordinates" maxlength="100"></label>
         <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200"></label>
-        <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено — не показывать и не управлять</label></div>
-        <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
-        <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
-        <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено — не показывать и не управлять</label></div>
+        <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено</label></div>
+        <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено</label></div>
+        <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено</label></div>
+        <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено</label></div>
         <label class="check full relay4-lock-field"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери</label>
         <label class="check full lock-unused-field"><input type="checkbox" name="lock_unused" value="1"> Замок не используется
           <span class="hint">плата ver_5_1 (версия 3): блок «Замок и дверь» не показывается, датчик двери не учитывается</span></label>
