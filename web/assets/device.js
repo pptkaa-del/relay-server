@@ -63,7 +63,11 @@
     });
     // кнопки по правам: изменение — только администратор, перезагрузка — при управлении хотя бы одним реле
     $('#b-edit').classList.toggle('hidden', !d.can_edit);
-    $('#b-reboot').classList.toggle('hidden', !d.can_reboot);
+    // версия 1 не умеет команду перезагрузки — вместо неё «Не принимать сообщения»
+    const v1 = d.dev_version === 1;
+    $('#b-reboot').classList.toggle('hidden', !d.can_reboot || v1);
+    $('#b-mqtt-block').classList.toggle('hidden', !d.can_reboot || !v1 || !!d.mqtt_block);
+    $('#mqtt-block').innerHTML = App.mqttBlockBanner(d);
     $$('[data-all]').forEach(b => b.classList.toggle('hidden', !d.can_all));
     $('#tabs [data-k="messages"]').classList.toggle('hidden', !d.can_edit);
     $('.o-bat').classList.toggle('hidden', !d.bat_on); // контроль АКБ выключен или версия 1
@@ -226,6 +230,11 @@
     const c = +b.dataset.lock;
     send(c, 5);
   }));
+  $('#b-mqtt-block').addEventListener('click', () => { if (dev) App.mqttBlockDialog(dev, () => { load(); loadLog(true); }); });
+  $('#mqtt-block').addEventListener('click', e => {
+    const b = e.target.closest('[data-mqtt-unblock]'); if (!b || !dev) return;
+    b.disabled = true; App.mqttUnblock(dev, () => { load(); loadLog(true); });
+  });
   $('#b-reboot').addEventListener('click', () => {
     if (confirm(`Перезагрузить устройство «${dev ? dev.name : id}»?\nУстройство перестанет отвечать на 1–2 минуты, затем подключится снова и восстановит состояние реле.`)) send(5, 0);
   });

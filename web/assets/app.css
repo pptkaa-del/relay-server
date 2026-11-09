@@ -569,3 +569,10 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .dev-comment { display: flex; gap: 6px; align-items: baseline; margin-top: 12px; font-size: 13px; color: var(--text-2); }
 .dev-comment a { color: var(--accent); white-space: nowrap; }
 .dev-comment .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* «Не принимать сообщения» (устройство версии 1) */
+.block-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 14px; padding: 10px 14px;
+  border: 1px solid var(--warn); border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--text); font-size: 13.5px; }
+.block-banner b { color: var(--warn); }
+.block-banner .spacer { flex: 1; }
+#mqtt-block .block-banner { margin-bottom: 16px; }

@@ -270,6 +270,19 @@ function handleRep(array $d): void
 function checkTimeouts(): void
 {
     $c = db();
+    // истёк срок «не принимать сообщения» — возвращаем устройству доступ к брокеру
+    foreach (relay_rows(@relay_q($c, 'SELECT id FROM general_info WHERE mqtt_block_at IS NOT NULL
+                                        AND mqtt_block_until IS NOT NULL AND mqtt_block_until <= NOW()') ?: null) as $b) {
+        $bid = (int)$b['id'];
+        [$code, $out] = relay_device_cli(['unblock', (string)$bid]);
+        if ($code === 0) {
+            relay_q($c, 'UPDATE general_info SET mqtt_block_at = NULL, mqtt_block_until = NULL WHERE id = ?', [$bid]);
+            relay_event($c, $bid, 'info', 'Срок «не принимать сообщения» истёк — сообщения от устройства снова принимаются', 'info');
+            writeLog("MQTT: устройство $bid снова допущено к брокеру");
+        } else {
+            writeLog("MQTT: не удалось вернуть доступ устройству $bid: $out", 'ERROR');
+        }
+    }
     $rows = relay_rows(relay_q($c, "SELECT id, last_seen FROM devices
                                     WHERE conn_state = 'online' AND last_seen < NOW() - INTERVAL ? SECOND", [RELAY_OFFLINE_AFTER]));
     foreach ($rows as $row) {
@@ -314,6 +327,10 @@ function handleBrokerLog(string $line): void
         return;
     }
     $c = db();
+    $blocked = relay_q($c, 'SELECT 1 FROM general_info WHERE id = ? AND mqtt_block_at IS NOT NULL', [$id]);
+    if ($blocked && mysqli_num_rows($blocked) > 0) {
+        return; // «не принимать сообщения» — отказ брокера ожидаем
+    }
     $known = relay_q($c, 'SELECT 1 FROM general_info WHERE id = ?', [$id]);
     if ($known && mysqli_num_rows($known) > 0) {
         // плата есть в панели, но брокер её не пускает — скорее всего, нет учётной записи MQTT

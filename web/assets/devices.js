@@ -106,6 +106,7 @@
       </div>
       <div class="card-body">
         ${breakBanner(d)}
+        ${App.mqttBlockBanner(d)}
         <div class="dev-meta dev-panel-meta">${metaHtml(d)}</div>
         <div class="relay-cards">${relays}</div>
         ${lock}
@@ -118,7 +119,10 @@
         <a class="btn sm" href="/device.php?id=${d.id}">Подробнее: журнал, АКБ, настройки</a>
         <span class="spacer"></span>
         <button class="btn sm ghost" data-cmd="4" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.refresh}<span class="hide-narrow">Запросить статус</span></button>
-        ${d.can_reboot ? `<button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>` : ''}
+        ${!d.can_reboot ? '' : d.dev_version === 1
+          ? (d.mqtt_block ? `<button class="btn sm ghost" data-mqtt-unblock="${d.id}">${ICONS.check}<span class="hide-narrow">Принимать снова</span></button>`
+                          : `<button class="btn sm ghost danger-text" data-mqtt-block="${d.id}" title="Брокер отключит устройство — версия 1 перезагрузится">${ICONS.power}<span class="hide-narrow">Не принимать сообщения</span></button>`)
+          : `<button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>`}
       </div></section>`;
   }
 
@@ -188,6 +192,9 @@
   }
 
   $('#split').addEventListener('click', async e => {
+    const mb = e.target.closest('[data-mqtt-block]'), mu = e.target.closest('[data-mqtt-unblock]');
+    if (mb) { const d = devices.find(x => x.id === +mb.dataset.mqttBlock); if (d) App.mqttBlockDialog(d, () => load().catch(() => {})); return; }
+    if (mu) { const d = devices.find(x => x.id === +mu.dataset.mqttUnblock); if (d) { mu.disabled = true; App.mqttUnblock(d, () => load().catch(() => {})); } return; }
     const ack = e.target.closest('[data-ack]');
     if (ack) {
       ack.disabled = true;

@@ -286,5 +286,54 @@ const App = (() => {
     upd();
   }
 
-  return { bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /* ---------- Версия 1: «Не принимать сообщения» (устройство потеряет связь и перезагрузится) ---------- */
+  const BLOCK_TIMES = [[2, '2 минуты'], [5, '5 минут'], [15, '15 минут'], [60, '1 час'], [0, 'до отмены']];
+  function mqttBlockDialog(d, onDone) {
+    let dlg = document.getElementById('mqtt-block-dlg');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.className = 'modal'; dlg.id = 'mqtt-block-dlg';
+      dlg.innerHTML = `<form method="dialog">
+        <div class="modal-head"><h2>Не принимать сообщения</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+        <div class="modal-body">
+          <p style="margin-top:0" id="mqtt-block-text"></p>
+          <label class="field">Не принимать<select class="input" name="minutes">${BLOCK_TIMES.map(([v, t]) => `<option value="${v}" ${v === 5 ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+          <p class="hint" style="margin:10px 0 0">Брокер сразу отключит устройство и не будет пускать обратно. Устройство версии 1,
+            не получив связи, перезагрузится. По истечении срока сообщения снова начнут приниматься; вернуть раньше — «Принимать снова».</p>
+          <div class="result" id="mqtt-block-result"></div>
+        </div>
+        <div class="modal-foot"><button class="btn" value="cancel" formnovalidate>Отмена</button>
+          <button class="btn bad" value="ok" id="mqtt-block-ok">Не принимать</button></div></form>`;
+      document.body.appendChild(dlg);
+    }
+    dlg.querySelector('#mqtt-block-text').textContent = `Устройство «${d.name}» (#${d.id}, версия 1).`;
+    dlg.querySelector('#mqtt-block-result').className = 'result';
+    dlg.querySelector('#mqtt-block-result').textContent = '';
+    const form = dlg.querySelector('form');
+    form.onsubmit = async e => {
+      if (e.submitter && e.submitter.value === 'cancel') return;
+      e.preventDefault();
+      const btn = dlg.querySelector('#mqtt-block-ok'); btn.disabled = true;
+      try {
+        await api('/api/devices.php', { action: 'mqtt_block', id: d.id, minutes: form.elements.minutes.value }, true);
+        dlg.close(); toast(`#${d.id}: сообщения не принимаются — устройство перезагрузится`, 'ok'); onDone && onDone();
+      } catch (er) { const r = dlg.querySelector('#mqtt-block-result'); r.className = 'result err'; r.textContent = er.message; }
+      finally { btn.disabled = false; }
+    };
+    dlg.showModal();
+  }
+  async function mqttUnblock(d, onDone) {
+    try { await api('/api/devices.php', { action: 'mqtt_unblock', id: d.id }, true); toast(`#${d.id}: сообщения снова принимаются`, 'ok'); onDone && onDone(); }
+    catch (er) { toast(er.message, 'err'); }
+  }
+  /** Баннер «сообщения не принимаются» */
+  function mqttBlockBanner(d) {
+    if (!d.mqtt_block) return '';
+    const b = d.mqtt_block;
+    return `<div class="block-banner"><b>Сообщения не принимаются</b>
+      <span>с ${fmtTime(b.ts)}${b.until ? ' до ' + fmtTime(b.until) : ' — до отмены'}. Брокер не пускает устройство, оно перезагружается.</span>
+      <span class="spacer"></span>${d.can_reboot ? `<button class="btn sm" data-mqtt-unblock="${d.id}">Принимать снова</button>` : ''}</div>`;
+  }
+
+  return { mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

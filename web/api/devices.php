@@ -13,6 +13,8 @@
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — массовое изменение устройств:
  *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять)
+ *   POST action=mqtt_block id, minutes (0 — до отмены) — не принимать сообщения от устройства (версия 1 перезагрузится)
+ *   POST action=mqtt_unblock id       — снова принимать сообщения
  *   POST action=ack_break_in id       — сбросить тревогу «взлом двери» (администратор или управляющий замком)
  *
  * Администратор видит всё. Пользователь — только выданные ему реле (panel_user_relays): list/get/battery
@@ -22,7 +24,7 @@
 require __DIR__ . '/../conectbd.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays', 'mqtt_block', 'mqtt_unblock'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
 if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays'], true) && !relay_is_admin()) {
@@ -116,6 +118,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
                COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone, COALESCE(g.owner, '') AS owner,
                g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor,
+               UNIX_TIMESTAMP(g.mqtt_block_at) AS mqtt_block_ts, UNIX_TIMESTAMP(g.mqtt_block_until) AS mqtt_block_until_ts,
                (SELECT COUNT(*) FROM device_comments c WHERE c.device_id = x.id) AS comments_count,
                (SELECT c.text FROM device_comments c WHERE c.device_id = x.id ORDER BY c.id DESC LIMIT 1) AS last_comment, COALESCE(g.lock_unused, 0) AS lock_unused, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
@@ -178,6 +181,10 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['hw_version'] = $d['hw_version'] === null ? null : (int)$d['hw_version'];
         $d['dev_version'] = $d['hw_version'] ?? $d['version'];
         $d['bat_monitor'] = (int)$d['bat_monitor'] === 1;
+        // «не принимать сообщения»: учётная запись устройства убрана из брокера
+        $d['mqtt_block'] = $d['mqtt_block_ts'] ? ['ts' => (int)$d['mqtt_block_ts'],
+            'until' => $d['mqtt_block_until_ts'] ? (int)$d['mqtt_block_until_ts'] : null] : null;
+        unset($d['mqtt_block_ts'], $d['mqtt_block_until_ts']);
         $d['comments_count'] = (int)$d['comments_count'];
         $d['last_comment'] = $d['last_comment'] === null ? null : mb_substr($d['last_comment'], 0, 200);
         // контроль АКБ: выключен в настройках или версия 1 (в её пакете нет АКБ) — напряжение не показываем
@@ -438,6 +445,39 @@ switch ($action) {
             $updated[] = $id;
         }
         relay_json(['ok' => true, 'updated' => $updated, 'missing' => $missing]);
+
+    case 'mqtt_block':
+    case 'mqtt_unblock':
+        $id = (int)($_POST['id'] ?? 0);
+        $rows = device_rows($connect, $id);
+        if (!$rows || !$rows[0]['can_reboot']) {
+            relay_forbidden('Недостаточно прав для этого устройства');
+        }
+        $d = $rows[0];
+        if ($action === 'mqtt_block') {
+            if ($d['dev_version'] !== 1) {
+                relay_json(['error' => 'Только для устройств версии 1: у остальных есть команда «Перезагрузить устройство»'], 400);
+            }
+            $min = (int)($_POST['minutes'] ?? 5);
+            $min = in_array($min, [0, 2, 5, 15, 60], true) ? $min : 5;
+            [$code, $out] = relay_device_cli(['block', (string)$id]);
+            if ($code !== 0) {
+                relay_json(['error' => "Не удалось отключить устройство в брокере: $out"], 500);
+            }
+            relay_q($connect, 'UPDATE general_info SET mqtt_block_at = NOW(),
+                                      mqtt_block_until = IF(? = 0, NULL, NOW() + INTERVAL ? MINUTE) WHERE id = ?', [$min, $min, $id]);
+            relay_event($connect, $id, 'reboot', 'Сообщения MQTT от устройства не принимаются' . ($min ? " ($min мин)" : ' (до отмены)')
+                . ' — устройство потеряет связь и перезагрузится', 'warning', null, $login);
+            relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
+        } else {
+            [$code, $out] = relay_device_cli(['unblock', (string)$id]);
+            if ($code !== 0) {
+                relay_json(['error' => "Не удалось вернуть доступ устройства к брокеру: $out"], 500);
+            }
+            relay_q($connect, 'UPDATE general_info SET mqtt_block_at = NULL, mqtt_block_until = NULL WHERE id = ?', [$id]);
+            relay_event($connect, $id, 'info', 'Сообщения MQTT от устройства снова принимаются', 'info', null, $login);
+        }
+        relay_json(['ok' => true]);
 
     case 'ack_break_in':
         $id = (int)($_POST['id'] ?? 0);

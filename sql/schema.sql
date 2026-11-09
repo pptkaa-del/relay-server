@@ -399,3 +399,11 @@ CREATE TABLE IF NOT EXISTS `device_comments` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_device` (`device_id`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.28: «Не принимать сообщения» — временная блокировка учётной записи устройства в брокере
+--        (устройство версии 1, потеряв связь, перезагружается)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `mqtt_block_at` DATETIME DEFAULT NULL,      -- когда заблокировано (NULL — принимаются)
+    ADD COLUMN IF NOT EXISTS `mqtt_block_until` DATETIME DEFAULT NULL;   -- до какого времени (NULL — до отмены)

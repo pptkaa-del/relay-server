@@ -16,10 +16,12 @@ layout_head("Устройство #$id", 'devices', $login);
     <button class="btn" id="b-status"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Запросить статус</button>
     <button class="btn" id="b-edit"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Изменить</button>
     <button class="btn bad" id="b-reboot"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Перезагрузить устройство</button>
+    <button class="btn bad hidden" id="b-mqtt-block" title="Брокер отключит устройство — версия 1 перезагрузится"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Не принимать сообщения</button>
   </div>
 </div>
 
 <div id="breakin"></div>
+<div id="mqtt-block"></div>
 <div class="layout-2">
   <div class="stack">
     <section class="card o-relays">

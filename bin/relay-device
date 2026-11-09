@@ -6,6 +6,9 @@
 #   sudo relay-device list                              — список плат
 #   sudo relay-device pass <ID>                         — показать MQTT-логин и пароль платы
 #   sudo relay-device sync-acl                          — пересобрать ACL из файла паролей
+#   sudo relay-device block   <ID>                      — не принимать сообщения: убрать учётную запись платы из брокера
+#                                                         (брокер сразу отключает плату и не пускает обратно)
+#   sudo relay-device unblock <ID>                      — снова принимать: вернуть учётную запись платы
 #   sudo relay-device user-add <логин> [пароль]         — добавить/сменить пароль пользователя веб-панели
 #   sudo relay-device user-del <логин>                  — удалить пользователя веб-панели
 #   sudo relay-device mqtt-user-add <логин> [пароль] [rw|read] — дополнительный пользователь брокера MQTT
@@ -111,6 +114,21 @@ case "${1:-}" in
         check_id "${2:-}"
         echo "MQTT логин:  relay-$2"
         echo "MQTT пароль: $(device_pass "$2")"
+        ;;
+    block)
+        check_id "${2:-}"
+        mosquitto_passwd -D "$PASSWD" "relay-$2" 2>/dev/null || true
+        sync_acl
+        reload_mosquitto   # при перечитывании mosquitto отключает плату, которой больше нет в файле паролей
+        echo "Сообщения от платы $2 не принимаются (брокер её не пускает)."
+        ;;
+    unblock)
+        check_id "${2:-}"
+        mosquitto_passwd -b "$PASSWD" "relay-$2" "$(device_pass "$2")" 2>/dev/null || die "mosquitto_passwd: не удалось записать $PASSWD"
+        chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
+        sync_acl
+        reload_mosquitto
+        echo "Сообщения от платы $2 снова принимаются."
         ;;
     sync-acl)
         sync_acl; reload_mosquitto; echo "ACL обновлён: $ACL"

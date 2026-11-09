@@ -1,11 +1,11 @@
 #!/bin/bash
 # Обработчик запросов веб-панели «Добавить / удалить плату» (запускается systemd от root).
 # Панель (www-data) кладёт в /var/lib/relay-server/queue файл <id>.req со строками:
-#   add | del
+#   add | del | block | unblock
 #   <ID платы>
 #   [название]
 #   [адрес]
-# Обработчик передаёт их в relay-device-web (та пропускает только add/del с проверенным ID)
+# Обработчик передаёт их в relay-device-web (та пропускает только add/del/block/unblock с проверенным ID)
 # и кладёт ответ <id>.res: первая строка — код возврата, далее — вывод.
 set -uo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
