@@ -364,3 +364,14 @@ SELECT e.`user_login`, 5, e.`device_id`, 0, e.`ts`
   FROM `device_events` e
  WHERE e.`type` = 'reboot' AND e.`user_login` IS NOT NULL AND JSON_VALUE(e.`data`, '$.command') = '5'
    AND NOT EXISTS (SELECT 1 FROM `relay_restart_clicks` WHERE `command` = 5);
+
+-- ---------------------------------------------------------------------------
+-- v3.16: версия устройства и отключение контроля АКБ
+--   hw_version: NULL — по данным устройства (поле version пакета stat);
+--               1 — первоначальная плата и прошивка (без АКБ, в stat — уровень сигнала сети),
+--               2 — старая плата и новая прошивка (АКБ), 3 — новая плата ver_5_1 и прошивка (АКБ, замок, дверь)
+--   bat_monitor: 0 — контроль АКБ выключен (напряжение не показывается)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `hw_version` TINYINT(4) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `bat_monitor` TINYINT(1) NOT NULL DEFAULT 1;

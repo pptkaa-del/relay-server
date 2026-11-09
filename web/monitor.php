@@ -64,7 +64,7 @@ layout_head('Монитор', 'monitor', $login);
           <label class="field">Брокер<select class="input" name="broker_id" style="min-width:170px"></select></label>
           <label class="field">stat каждые, с<input class="input" name="interval_sec" type="number" min="5" max="3600" value="60" style="width:100px"></label>
           <label class="field">Плата<select class="input" name="version" style="width:170px">
-            <option value="2">v2 — 4 реле</option><option value="3">ver_5_1 — замок и дверь</option></select></label>
+            <option value="1">версия 1 — первоначальная (без АКБ)</option><option value="2" selected>версия 2 — 4 реле, АКБ</option><option value="3">версия 3 — ver_5_1, замок и дверь</option></select></label>
           <div class="btn-row"><button class="btn primary" type="submit">Запустить</button></div>
         </form>
         <div class="result" id="sim-result"></div>

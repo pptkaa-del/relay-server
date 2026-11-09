@@ -261,5 +261,20 @@ const App = (() => {
     else if (/^9/.test(v) && v.replace(/\D/g, '').length >= 10) el.value = '+7' + v;
   });
 
-  return { fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /** Форма с версией устройства и «Контроль АКБ»: у версии 1 АКБ нет — флажок недоступен, блок калибровки скрыт */
+  function bindHwVersion(form) {
+    const upd = () => {
+      const v1 = form.elements.hw_version.value === '1';
+      const cb = form.elements.bat_monitor;
+      cb.disabled = v1;
+      const on = cb.checked && !v1;
+      form.querySelectorAll('[data-bat-box]').forEach(el => el.classList.toggle('hidden', !on));
+    };
+    form.elements.hw_version.addEventListener('change', upd);
+    form.elements.bat_monitor.addEventListener('change', upd);
+    form.addEventListener('hw-version', upd);
+    upd();
+  }
+
+  return { bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

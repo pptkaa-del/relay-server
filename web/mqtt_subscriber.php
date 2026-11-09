@@ -504,7 +504,7 @@ function syncSims(): void
         $seen[$k] = true;
         $fromDb = [
             'row_id' => (int)$row['id'], 'broker' => (int)$row['broker_id'], 'device' => (int)$row['device_id'],
-            'version' => (int)$row['version'] === 3 ? 3 : 2, 'interval' => max(5, (int)$row['interval_sec']),
+            'version' => in_array((int)$row['version'], [1, 2, 3], true) ? (int)$row['version'] : 2, 'interval' => max(5, (int)$row['interval_sec']),
             'sl' => (int)$row['signal_level'], 'bat' => (int)$row['bat_adc'],
         ];
         $relays = array_map('intval', explode(',', $row['relays'] . ',0,0,0,0'));
@@ -569,7 +569,10 @@ function simStat(string $k): void
     // небольшие колебания сигнала и АЦП АКБ, как у живой платы
     $sl = max(5, min(31, $s['sl'] + random_int(-2, 2)));
     $bat = max(0, $s['bat'] + random_int(-3, 3));
-    $p = pack('V*', $s['device'], $s['version'], ...$s['relays']) . pack('V*', 1, $sl, 0, $bat);
+    $p = pack('V*', $s['device'], $s['version'], ...$s['relays']) . pack('V*', 1, $sl, 0);
+    if ($s['version'] >= 2) {
+        $p .= pack('V', $bat); // версия 1 (первоначальная прошивка) — 36 байт, без АКБ
+    }
     if ($s['version'] === 3) {
         $p .= pack('V*', $s['lock'], $s['door']);
     }

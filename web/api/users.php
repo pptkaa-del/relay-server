@@ -122,7 +122,7 @@ switch ($action) {
         $devices = [];
         foreach (relay_rows(mysqli_query($connect, "SELECT g.id, COALESCE(NULLIF(g.name_obj, ''), CONCAT('Устройство ', g.id)) AS name,
                     g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4, COALESCE(g.relay4_lock, 0) AS relay4_lock, COALESCE(g.relays_disabled, 0) AS relays_disabled,
-                    (d.door_state IS NOT NULL OR COALESCE(d.version, 0) >= 3) AS has_lock
+                    (COALESCE(g.hw_version, d.version, 0) >= 3) AS has_lock
                FROM general_info g LEFT JOIN devices d ON d.id = g.id ORDER BY g.id")) as $d) {
             $relays = [];
             for ($i = 1; $i <= 4; $i++) {

@@ -92,7 +92,14 @@ layout_head("Устройство #$id", 'devices', $login);
         <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено — не показывать и не управлять</label></div>
         <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
           <span class="hint">включено — дверь закрыта, выключено — открыта; кнопки: «Закрыть», «Открыть», «Открыть надолго»</span></label>
-        <fieldset class="fieldset">
+        <label class="field">Версия устройства<select class="input" name="hw_version">
+          <option value="">Авто — по данным устройства</option>
+          <option value="1">1 — первоначальная плата и прошивка (без АКБ)</option>
+          <option value="2">2 — старая плата, новая прошивка</option>
+          <option value="3">3 — новая плата ver_5_1 и прошивка (замок, дверь)</option></select></label>
+        <label class="check bat-monitor"><input type="checkbox" name="bat_monitor" value="1" checked> Контроль АКБ
+          <span class="hint">выключите, если АКБ не подключён; у версии 1 контроля АКБ нет</span></label>
+        <fieldset class="fieldset" data-bat-box>
           <legend>АКБ и калибровка напряжения</legend>
           <label class="field">Тип АКБ<select class="input" name="bat_type"><option value="12">12 В</option><option value="24">24 В</option></select></label>
           <p class="hint">Подайте на вход АКБ устройства <span data-bat-low>6</span> В, дождитесь нового stat (кнопка «Запросить статус») и нажмите «Текущее»;

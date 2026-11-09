@@ -66,6 +66,7 @@
     $('#b-reboot').classList.toggle('hidden', !d.can_reboot);
     $$('[data-all]').forEach(b => b.classList.toggle('hidden', !d.can_all));
     $('#tabs [data-k="messages"]').classList.toggle('hidden', !d.can_edit);
+    $('.o-bat').classList.toggle('hidden', !d.bat_on); // контроль АКБ выключен или версия 1
     renderRelays();
 
     // плата ver_5_1 (протокол v3): замок и геркон двери
@@ -99,8 +100,8 @@
       <dt>Топик команд</dt><dd class="mono">com/${d.id}</dd>
       <dt>Связь</dt><dd>${stateBadge(d.state)}</dd>
       <dt>Сигнал GSM</dt><dd>${signalBars(d.signal_level)} <span class="muted">${d.signal_level ?? '—'}/31</span></dd>
-      <dt>АКБ</dt><dd>${App.batteryHtml(d) || '—'}</dd>
-      <dt>Протокол</dt><dd>${d.version ? 'v' + d.version : '—'}</dd>
+      <dt>АКБ</dt><dd>${d.bat_on ? (App.batteryHtml(d) || '—') : '<span class="muted">контроль выключен</span>'}</dd>
+      <dt>Версия</dt><dd>${d.dev_version ? d.dev_version + (d.hw_version ? ' (задана в настройках)' : ' (по данным устройства)') : '—'}${d.version && d.hw_version && d.version !== d.hw_version ? ` <span class="muted">· устройство сообщает v${d.version}</span>` : ''}</dd>
       <dt>Последняя команда</dt><dd>${lc ? esc(cmdLabel(+lc.command, +lc.relay_num, d.relay4_lock)) + ' ' + (+lc.relay_num === 4 && d.relay4_lock ? '' : App.cmdStatusBadge(lc.status)) + `<div class="muted">${esc(lc.created_at)}</div>` : '—'}</dd>
       <dt>Координаты</dt><dd>${d.coordinates ? esc(d.coordinates) : '—'}</dd>
       <dt>Первое подключение</dt><dd>${d.created_at ? esc(d.created_at) : '—'}</dd>`;
@@ -239,11 +240,15 @@
     form.elements.cal_high.value = (t24 ? dev.cal_adc_26 : dev.cal_adc_15) ?? '';
   }
   App.bindBatType(form);
+  App.bindHwVersion(form);
   form.elements.bat_type.addEventListener('change', () => { if (dev) fillCal(); });
   $('#b-edit').addEventListener('click', () => {
     if (!dev) return;
     form.elements.name.value = dev.name; form.elements.address.value = dev.address || ''; form.elements.coordinates.value = dev.coordinates || '';
     form.elements.sim_phone.value = dev.sim_phone || '';
+    form.elements.hw_version.value = dev.hw_version ? String(dev.hw_version) : '';
+    form.elements.bat_monitor.checked = dev.bat_monitor !== false;
+    form.dispatchEvent(new Event('hw-version'));
     form.elements.bat_type.value = String(dev.bat_type || 12);
     form.elements.relay4_lock.checked = !!dev.relay4_lock;
     fillCal(); form.dispatchEvent(new Event('bat-type'));
@@ -258,7 +263,8 @@
   dlg.addEventListener('close', async () => {
     if (dlg.returnValue !== 'save') return;
     const p = { action: 'update', id };
-    for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = form.elements[k].value;
+    for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = form.elements[k].value;
+    p.bat_monitor = form.elements.bat_monitor.checked && form.elements.hw_version.value !== '1' ? '1' : '0';
     p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }

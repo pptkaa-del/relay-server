@@ -207,8 +207,9 @@
   const addDlg = $('#add'), addForm = $('#add-form'), F = k => addForm.elements[k];
   // подписи полей калибровки по типу АКБ: 12 В — АЦП при 6 и 15 В, 24 В — при 19 и 26 В
   App.bindBatType(addForm);
+  App.bindHwVersion(addForm);
   function openAdd(prefillId) {
-    addForm.reset(); addForm.dispatchEvent(new Event('bat-type')); $('#add-result').textContent = ''; $('#add-result').className = 'result';
+    addForm.reset(); addForm.dispatchEvent(new Event('bat-type')); addForm.dispatchEvent(new Event('hw-version')); $('#add-result').textContent = ''; $('#add-result').className = 'result';
     if (prefillId) F('id').value = prefillId;
     addDlg.showModal(); (prefillId ? F('name') : F('id')).focus();
   }
@@ -255,6 +256,8 @@
     const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
     p.relay4_lock = bulkForm.elements.relay4_lock.value;
+    p.hw_version = bulkForm.elements.hw_version.value;
+    p.bat_monitor = bulkForm.elements.bat_monitor.value;
     const res = $('#bulk-result'), btn = $('#bulk-submit');
     btn.disabled = true;
     try {
@@ -290,7 +293,8 @@
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
     const p = { action: 'add' };
-    for (const k of ['id', 'name', 'address', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high']) p[k] = F(k).value.trim();
+    for (const k of ['id', 'name', 'address', 'sim_phone', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = F(k).value.trim();
+    p.bat_monitor = F('bat_monitor').checked && F('hw_version').value !== '1' ? '1' : '0';
     p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');
