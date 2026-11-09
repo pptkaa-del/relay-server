@@ -261,6 +261,7 @@
     p.owner = bulkForm.elements.owner.value.trim();
     p.hw_version = bulkForm.elements.hw_version.value;
     p.bat_monitor = bulkForm.elements.bat_monitor.value;
+    p.lock_unused = bulkForm.elements.lock_unused.value;
     const res = $('#bulk-result'), btn = $('#bulk-submit');
     btn.disabled = true;
     try {
@@ -298,6 +299,7 @@
     const p = { action: 'add' };
     for (const k of ['id', 'name', 'address', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = F(k).value.trim();
     p.bat_monitor = F('bat_monitor').checked && F('hw_version').value !== '1' ? '1' : '0';
+    p.lock_unused = F('lock_unused').checked ? '1' : '0';
     p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');

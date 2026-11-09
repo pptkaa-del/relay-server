@@ -264,11 +264,21 @@ const App = (() => {
   /** Форма с версией устройства и «Контроль АКБ»: у версии 1 АКБ нет — флажок недоступен, блок калибровки скрыт */
   function bindHwVersion(form) {
     const upd = () => {
-      const v1 = form.elements.hw_version.value === '1';
+      // «Авто» — версия, которую сообщает устройство (form.dataset.reportedVersion)
+      const ver = +(form.elements.hw_version.value || form.dataset.reportedVersion || 0);
+      const v1 = ver === 1;
       const cb = form.elements.bat_monitor;
       cb.disabled = v1;
       const on = cb.checked && !v1;
       form.querySelectorAll('[data-bat-box]').forEach(el => el.classList.toggle('hidden', !on));
+      // версия 3 (ver_5_1): свой замок — «реле 4 — замок» недоступно, есть «Замок не используется»
+      const v3 = ver >= 3;
+      const r4 = form.elements.relay4_lock;
+      if (r4 && r4.type === 'checkbox') {
+        if (v3) r4.checked = false;
+        form.querySelectorAll('.relay4-lock-field').forEach(el => el.classList.toggle('hidden', v3));
+      }
+      form.querySelectorAll('.lock-unused-field').forEach(el => el.classList.toggle('hidden', !v3));
     };
     form.elements.hw_version.addEventListener('change', upd);
     form.elements.bat_monitor.addEventListener('change', upd);

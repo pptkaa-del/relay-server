@@ -84,8 +84,10 @@ layout_head('Устройства', 'devices', $login);
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено — не показывать и не управлять</label></div>
         <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60" placeholder="Реле 4"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено — не показывать и не управлять</label></div>
-        <label class="check full"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
+        <label class="check full relay4-lock-field"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери
           <span class="hint">включено — дверь закрыта, выключено — открыта</span></label>
+        <label class="check full lock-unused-field"><input type="checkbox" name="lock_unused" value="1"> Замок не используется
+          <span class="hint">плата ver_5_1 (версия 3): блок «Замок и дверь» не показывается, датчик двери не учитывается</span></label>
         <label class="field">Версия устройства<select class="input" name="hw_version">
           <option value="">Авто — по данным устройства</option>
           <option value="1">1 — первоначальная плата и прошивка (без АКБ)</option>
@@ -144,7 +146,9 @@ layout_head('Устройства', 'devices', $login);
           <option value="3">3 — новая плата ver_5_1</option></select></label>
         <label class="field">Контроль АКБ<select class="input" name="bat_monitor">
           <option value="">не менять</option><option value="1">включить</option><option value="0">выключить</option></select></label>
-        <label class="field full">Реле 4 — замок двери<select class="input" name="relay4_lock">
+        <label class="field full">Замок платы ver_5_1 (версия 3)<select class="input" name="lock_unused">
+          <option value="">не менять</option><option value="0">используется</option><option value="1">не используется — не показывать блок «Замок и дверь»</option></select></label>
+        <label class="field full">Реле 4 — замок двери (версии 1 и 2)<select class="input" name="relay4_lock">
           <option value="">не менять</option>
           <option value="1">включить: реле 4 управляет замком (вкл — дверь закрыта, выкл — открыта)</option>
           <option value="0">выключить: реле 4 — обычное реле</option></select></label>

@@ -75,6 +75,12 @@ const STATE_NAMES = [0 => 'выкл', 1 => 'вкл', 2 => 'ошибка'];
  */
 function checkBreakIn(mysqli $c, int $id, string $source): void
 {
+    if ($source === 'door') { // плата ver_5_1 с отметкой «замок не используется» — датчик двери не учитываем
+        $u = relay_q($c, 'SELECT 1 FROM general_info WHERE id = ? AND lock_unused = 1', [$id]);
+        if ($u && mysqli_num_rows($u) > 0) {
+            return;
+        }
+    }
     $cmd = relay_q($c, "SELECT 1 FROM commands WHERE device_id = ? AND created_at > NOW() - INTERVAL 180 SECOND
                           AND (command = 5 OR (command IN (2, 3) AND relay_num IN (0, 4, 5))) LIMIT 1", [$id]);
     if ($cmd && mysqli_num_rows($cmd) > 0) {

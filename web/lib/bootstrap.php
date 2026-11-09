@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.20';
+const RELAY_VERSION       = '3.21';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -732,7 +732,9 @@ function relay_relay4_lock(mysqli $db, int $deviceId): bool
 {
     static $cache = [];   // [device_id => [значение, время]] — подписчик работает долго, поэтому кэш на 30 с
     if (!isset($cache[$deviceId]) || time() - $cache[$deviceId][1] > 30) {
-        $res = relay_q($db, 'SELECT relay4_lock FROM general_info WHERE id = ?', [$deviceId]);
+        // у платы ver_5_1 (версия 3) свой замок — режим «реле 4 — замок» для неё не действует
+        $res = relay_q($db, 'SELECT g.relay4_lock AND COALESCE(g.hw_version, d.version, 0) < 3
+                               FROM general_info g LEFT JOIN devices d ON d.id = g.id WHERE g.id = ?', [$deviceId]);
         $r = $res instanceof mysqli_result ? mysqli_fetch_row($res) : null;
         $cache[$deviceId] = [$r !== null && (int)$r[0] === 1, time()];
     }

@@ -381,3 +381,9 @@ ALTER TABLE `general_info`
 -- ---------------------------------------------------------------------------
 ALTER TABLE `general_info`
     ADD COLUMN IF NOT EXISTS `owner` VARCHAR(200) NOT NULL DEFAULT '';
+
+-- ---------------------------------------------------------------------------
+-- v3.20: «Замок не используется» (плата ver_5_1, версия 3): блок «Замок и дверь» не показывается
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `lock_unused` TINYINT(1) NOT NULL DEFAULT 0;

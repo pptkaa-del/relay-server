@@ -254,6 +254,8 @@
     form.elements.sim_phone.value = dev.sim_phone || '';
     form.elements.owner.value = dev.owner || '';
     form.elements.hw_version.value = dev.hw_version ? String(dev.hw_version) : '';
+    form.dataset.reportedVersion = dev.version || '';
+    form.elements.lock_unused.checked = !!dev.lock_unused;
     form.elements.bat_monitor.checked = dev.bat_monitor !== false;
     form.dispatchEvent(new Event('hw-version'));
     form.elements.bat_type.value = String(dev.bat_type || 12);
@@ -272,6 +274,7 @@
     const p = { action: 'update', id };
     for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = form.elements[k].value;
     p.bat_monitor = form.elements.bat_monitor.checked && form.elements.hw_version.value !== '1' ? '1' : '0';
+    p.lock_unused = form.elements.lock_unused.checked ? '1' : '0';
     p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }

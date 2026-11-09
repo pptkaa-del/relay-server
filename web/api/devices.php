@@ -115,7 +115,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
                COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
                COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone, COALESCE(g.owner, '') AS owner,
-               g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
+               g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor, COALESCE(g.lock_unused, 0) AS lock_unused, UNIX_TIMESTAMP(d.break_in_at) AS break_in_ts, d.break_in_source,
                d.bat_adc, UNIX_TIMESTAMP(d.bat_adc_at) AS bat_adc_ts,
                d.lock_state, d.door_state,
                g.name_reley_1, g.name_reley_2, g.name_reley_3, g.name_reley_4,
@@ -181,14 +181,23 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         if (!$d['bat_on']) {
             $d['bat_adc'] = $d['bat_adc_ts'] = null;
         }
-        // замок и датчик двери платы ver_5_1 — только у версии 3
-        if ($d['dev_version'] !== null && $d['dev_version'] < 3) {
+        // замок и датчик двери платы ver_5_1 — только у версии 3 и если замок используется
+        $d['lock_unused'] = (int)$d['lock_unused'] === 1;
+        if (($d['dev_version'] !== null && $d['dev_version'] < 3) || $d['lock_unused']) {
             $d['door_state'] = $d['lock_state'] = null;
+        }
+        // у версии 3 свой замок: режим «реле 4 — замок» не действует
+        if ($d['dev_version'] !== null && $d['dev_version'] >= 3) {
+            $d['relay4_lock'] = false;
+            foreach ($d['relays'] as &$rr) {
+                $rr['lock'] = false;
+            }
+            unset($rr);
         }
         $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_low'], $d['cal_high'], $d['bat_type']);
         // замок платы ver_5_1 («реле 5»)
         // плата ver_5_1 (версия 3): 4 реле и отдельный замок («реле 5») — показываем всегда, даже до первых данных о замке
-        $d['has_lock'] = $d['dev_version'] !== null && $d['dev_version'] >= 3;
+        $d['has_lock'] = $d['dev_version'] !== null && $d['dev_version'] >= 3 && !$d['lock_unused'];
         $d['lock_access'] = !$d['has_lock'] ? null
             : ($admin ? 'control' : (isset($perms[$id][RELAY_LOCK]) ? ($perms[$id][RELAY_LOCK] ? 'control' : 'view') : null));
         // что можно делать с устройством целиком
@@ -272,9 +281,16 @@ switch ($action) {
              $f('relay1', 60) ?: 'Реле 1', $f('relay2', 60) ?: 'Реле 2', $f('relay3', 60) ?: 'Реле 3', $f('relay4', 60) ?: 'Реле 4']);
         $hw = hw_version_from_post();
         $batOn = ($_POST['bat_monitor'] ?? '1') === '1' ? 1 : 0;
-        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?,
+        $lockUnused = ($_POST['lock_unused'] ?? '0') === '1' ? 1 : 0;
+        // версия 3 (выбранная или по данным устройства) — у платы свой замок, «реле 4 — замок» не ставим
+        $rvRes = relay_q($connect, 'SELECT version FROM devices WHERE id = ?', [$id]);
+        $rv = $rvRes instanceof mysqli_result ? mysqli_fetch_row($rvRes) : null;
+        if (($hw ?? (int)($rv[0] ?? 0)) >= 3) {
+            $lock4 = 0;
+        }
+        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$batType, $lock4, $off, $sim, $owner, $hw, $batOn, $calLo, $calHi, $id]);
+            [$batType, $lock4, $off, $sim, $owner, $hw, $batOn, $lockUnused, $calLo, $calHi, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
         relay_event($connect, $id, 'info', 'Изменены данные устройства: название, адрес, подписи реле, АКБ ' . $batType . ' В'
             . ($lock4 ? ', реле 4 — замок' : '') . ($off ? ', отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : ''),
@@ -322,6 +338,10 @@ switch ($action) {
         $owner = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200); // для кого установлено
         $hwAdd = hw_version_from_post();
         $batAdd = ($_POST['bat_monitor'] ?? '1') === '1' ? 1 : 0;
+        $lockUnusedAdd = ($_POST['lock_unused'] ?? '0') === '1' ? 1 : 0;
+        if ($hwAdd === 3) {
+            $lock4 = 0; // у платы ver_5_1 свой замок
+        }
         // 1. учётная запись MQTT + ACL + reload брокера (нужен root → sudo relay-device add)
         [$code, $out] = relay_device_cli(['add', (string)$id, $name, $address]);
         if ($code !== 0) {
@@ -335,9 +355,9 @@ switch ($action) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
         relay_q($connect, "UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?,
+                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $sim, $owner, $hwAdd, $batAdd, $calLo, $calHi, $id]);
+            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $sim, $owner, $hwAdd, $batAdd, $lockUnusedAdd, $calLo, $calHi, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
@@ -381,6 +401,12 @@ switch ($action) {
             $set[] = 'bat_monitor = ?';
             $params[] = (int)$batMode;
             $names[] = $batMode === '1' ? 'контроль АКБ включён' : 'контроль АКБ выключен';
+        }
+        $unusedMode = (string)($_POST['lock_unused'] ?? '');
+        if ($unusedMode === '1' || $unusedMode === '0') {
+            $set[] = 'lock_unused = ?';
+            $params[] = (int)$unusedMode;
+            $names[] = $unusedMode === '1' ? 'замок платы ver_5_1 не используется' : 'замок платы ver_5_1 используется';
         }
         $lockMode = (string)($_POST['relay4_lock'] ?? '');
         if ($lockMode === '1' || $lockMode === '0') {
