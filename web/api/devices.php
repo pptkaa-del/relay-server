@@ -280,6 +280,13 @@ switch ($action) {
         $d['stats'] = mysqli_fetch_assoc(relay_q($connect,
             "SELECT SUM(ts > NOW() - INTERVAL 1 DAY) AS day, SUM(ts > NOW() - INTERVAL 1 HOUR) AS hour, COUNT(*) AS kept
                FROM mqtt_messages WHERE broker_id = 1 AND device_id = ? AND direction = 'in'", [$id]));
+        // соседние устройства (по номеру, только доступные пользователю) — кнопки «предыдущее / следующее»
+        $ids = array_map(fn($r) => (int)$r['id'], relay_rows(mysqli_query($connect, 'SELECT id FROM general_info UNION SELECT id FROM devices ORDER BY id')));
+        $ids = array_values(array_filter($ids, fn($x) => relay_can_view($x)));
+        $pos = array_search($id, $ids, true);
+        $d['prev_id'] = $pos !== false && $pos > 0 ? $ids[$pos - 1] : null;
+        $d['next_id'] = $pos !== false && $pos < count($ids) - 1 ? $ids[$pos + 1] : null;
+        $d['position'] = $pos === false ? null : [$pos + 1, count($ids)];
         relay_json(['device' => $d, 'now' => time()]);
 
     case 'update':

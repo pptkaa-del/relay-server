@@ -576,3 +576,8 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .block-banner b { color: var(--warn); }
 .block-banner .spacer { flex: 1; }
 #mqtt-block .block-banner { margin-bottom: 16px; }
+
+/* страница устройства: переход к соседним */
+.crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dev-nav { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; }
+.dev-nav .btn { height: 26px; font-size: 12.5px; }

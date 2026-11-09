@@ -50,6 +50,13 @@
     const d = dev;
     document.title = `${d.name} · off-on service`;
     $('#d-name').textContent = d.name;
+    // переход к соседним устройствам
+    for (const [el, nid] of [['#dev-prev', d.prev_id], ['#dev-next', d.next_id]]) {
+      const a = $(el);
+      a.classList.toggle('hidden', !nid);
+      if (nid) { a.href = '/device.php?id=' + nid; a.textContent = el === '#dev-prev' ? `← Предыдущее (#${nid})` : `Следующее (#${nid}) →`; }
+    }
+    $('#dev-pos').textContent = d.position ? `${d.position[0]} из ${d.position[1]}` : '';
     $('#d-addr').textContent = (d.address || 'Адрес не указан') + (d.owner ? ' · ' + d.owner : '');
     $('#d-badge').innerHTML = stateBadge(d.state) + (d.break_in ? ' <span class="badge breakin">ВЗЛОМ ДВЕРИ</span>' : '');
     $('#breakin').innerHTML = d.break_in ? `<div class="breakin-banner"><b>ВЗЛОМ ДВЕРИ</b>
@@ -332,6 +339,12 @@
   loadComments();
 
   setInterval(() => $$('[data-ago]').forEach(el => { const t = +el.dataset.ago; if (t) el.textContent = ago(t); }), 1000);
+  // Alt+← / Alt+→ — предыдущее / следующее устройство (не в полях ввода)
+  document.addEventListener('keydown', e => {
+    if (!e.altKey || !dev || e.target.closest('input, textarea, select')) return;
+    const nid = e.key === 'ArrowLeft' ? dev.prev_id : e.key === 'ArrowRight' ? dev.next_id : null;
+    if (nid) { e.preventDefault(); location.href = '/device.php?id=' + nid; }
+  });
   load(); loadLog(true);
   App.every(5000, load);
   App.every(10000, () => { if ((kind === 'events' || kind === 'relays') && !paged && !$('#f-from').value && !$('#f-to').value) return loadLog(true); });

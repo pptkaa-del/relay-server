@@ -7,7 +7,12 @@ layout_head("Устройство #$id", 'devices', $login);
 ?>
 <div class="page-head" id="head" data-id="<?= $id ?>">
   <div style="min-width:0">
-    <div class="crumbs"><a href="/index.php">Устройства</a> / <span class="mono">#<?= $id ?></span></div>
+    <div class="crumbs"><a href="/index.php">Устройства</a> / <span class="mono">#<?= $id ?></span>
+      <span class="dev-nav">
+        <a class="btn sm hidden" id="dev-prev" href="#" title="Предыдущее устройство (Alt+←)">← Предыдущее</a>
+        <span class="muted" id="dev-pos"></span>
+        <a class="btn sm hidden" id="dev-next" href="#" title="Следующее устройство (Alt+→)">Следующее →</a>
+      </span></div>
     <h1 id="d-name">Устройство #<?= $id ?></h1>
     <p id="d-addr"></p>
   </div>
