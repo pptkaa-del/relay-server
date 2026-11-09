@@ -35,6 +35,9 @@ layout_head('Устройства', 'devices', $login);
 <div class="toolbar">
   <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input class="input" id="q" type="search" placeholder="Поиск: название, адрес, для кого, ID"></label>
+  <label class="user-filter hidden" id="user-filter-wrap" title="Показать только устройства, доступные пользователю">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+    <select class="input" id="user-filter"><option value="">Все пользователи</option></select></label>
   <span class="spacer"></span>
   <div class="seg" id="sort">
     <button data-s="id" class="on">По ID</button><button data-s="name">По имени</button><button data-s="seen">По данным</button>

@@ -607,3 +607,10 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .cluster-row:hover { background: rgba(37, 99, 235, .08); }
 .cluster-row span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cluster-row .pin { width: 10px; height: 10px; border-width: 2px; }
+
+/* главная: фильтр по пользователю (администратор) */
+.user-filter { position: relative; display: inline-flex; align-items: center; }
+.user-filter svg { position: absolute; left: 10px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.user-filter select.input { padding-left: 32px; width: auto; max-width: 320px; }
+.user-filter select.input.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--accent); font-weight: 600; }
+@media (max-width: 760px) { .user-filter { flex-basis: 100%; } .user-filter select.input { max-width: none; width: 100%; } }

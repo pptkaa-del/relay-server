@@ -3,6 +3,8 @@
 (() => {
   const { $, $$, esc, api, ago, fmtTime, stateBadge, signalBars, ICONS, toast, sendCommand, cmdLabel } = App;
   let devices = [], filter = 'all', sort = 'id', query = '';
+  // администратор: фильтр «устройства пользователя» — login → {id устройства: 'control' | 'view'}
+  let userFilter = '', userAccess = {};
   const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100;
     return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
   const busy = new Set(); // "id:relay" — ждём подтверждения
@@ -13,6 +15,7 @@
   function visible() {
     const q = query.trim().toLowerCase();
     let list = devices.filter(d => {
+      if (userFilter && !userAccess[userFilter]?.[d.id]) return false;
       if (filter === 'online' && !d.online) return false;
       if (filter === 'offline' && (d.online || d.state === 'never' || d.state === 'power_off')) return false;
       if (filter === 'batlow' && !(d.online && d.bat_low)) return false;
@@ -66,7 +69,7 @@
     const lockPip = d.has_lock ? `<i class="lock-pip ${d.door_state === 1 ? 'open' : d.door_state === 0 ? 'closed' : 'na'}" title="Замок: ${d.door_state == null ? 'нет данных' : d.door_state === 1 ? 'дверь открыта' : 'дверь закрыта'}"></i>` : '';
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
-      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}<span class="mono muted">#${d.id}</span></div>
+      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${userFilter && userAccess[userFilter]?.[d.id] === 'view' ? '<span class="badge" title="У пользователя только просмотр">просмотр</span>' : ''}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}<span class="mono muted">#${d.id}</span></div>
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}${lockPip}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
@@ -131,10 +134,25 @@
       </div></section>`;
   }
 
+  /** Числа в плитках: по всем устройствам или только по устройствам выбранного пользователя */
+  function updateTiles() {
+    const src = userFilter ? devices.filter(d => userAccess[userFilter]?.[d.id]) : devices;
+    const sum = { total: src.length, online: 0, offline: 0, never: 0, bat_low: 0, power_off: 0 };
+    for (const d of src) {
+      if (d.state === 'never') sum.never++;
+      else if (d.online) sum.online++;
+      else if (d.state === 'power_off') sum.power_off++;
+      else sum.offline++;
+      if (d.online && d.bat_low) sum.bat_low++;
+    }
+    for (const [k, v] of Object.entries(sum)) { const el = $(`[data-k="${k}"]`); if (el) el.textContent = v; }
+    $('[data-f="batlow"]').classList.toggle('lit', sum.bat_low > 0);
+    $('[data-f="poweroff"]').classList.toggle('lit', sum.power_off > 0);
+  }
+
   function render() {
+    updateTiles();
     const list = visible();
-    // карта (map.js) рисует те же устройства, что и список: с учётом фильтров и поиска
-    document.dispatchEvent(new CustomEvent('relay:devices', { detail: { list, selected } }));
     const sel = selected ? devices.find(d => d.id === selected) : null;
     $('#split').classList.toggle('has-sel', !!sel);
     // карта — когда устройство не выбрано и устройства есть
@@ -155,15 +173,14 @@
     } else {
       panel.innerHTML = ''; // без выбора справа карта (map.js)
     }
+    // карта (map.js) рисует те же устройства, что и список: с учётом фильтров и поиска.
+    // Сообщаем в конце, когда блок карты уже показан или скрыт
+    document.dispatchEvent(new CustomEvent('relay:devices', { detail: { list, selected } }));
   }
 
   async function load() {
     const j = await api('/api/devices.php', { action: 'list' });
     devices = j.devices;
-    for (const [k, v] of Object.entries(j.summary)) { const el = $(`[data-k="${k}"]`); if (el) el.textContent = v; }
-    // тревожные плитки подсвечиваются, когда в них есть устройства
-    $('[data-f="batlow"]').classList.toggle('lit', j.summary.bat_low > 0);
-    $('[data-f="poweroff"]').classList.toggle('lit', j.summary.power_off > 0);
     $('#lastmsg').innerHTML = j.last_message_ts
       ? `Последнее сообщение от устройств: <b data-ago="${j.last_message_ts}">${ago(j.last_message_ts)}</b> · ${fmtTime(j.last_message_ts)}`
       : 'Сообщений от устройств ещё не было';
@@ -294,6 +311,42 @@
 
   /* ---------- Незарегистрированные платы ---------- */
   const isAdmin = document.body.classList.contains('role-admin');
+
+  /* ---------- Администратор: фильтр по пользователю ---------- */
+  async function loadUsers() {
+    if (!isAdmin) return;
+    let j;
+    try { j = await api('/api/users.php', { action: 'list' }); } catch (e) { return; }
+    userAccess = {};
+    const opts = ['<option value="">Все пользователи</option>'];
+    for (const u of j.users) {
+      if (u.role === 'admin') continue; // администратор и так видит всё
+      const acc = {};
+      for (const [dev, relays] of Object.entries(u.perms || {})) {
+        const v = Object.values(relays);
+        if (v.length) acc[dev] = v.includes('control') ? 'control' : 'view';
+      }
+      userAccess[u.login] = acc;
+      opts.push(`<option value="${esc(u.login)}">${esc(u.name ? `${u.name} (${u.login})` : u.login)} — ${Object.keys(acc).length} устр.${u.enabled ? '' : ' · отключён'}</option>`);
+    }
+    const sel = $('#user-filter');
+    sel.innerHTML = opts.join('');
+    if (userFilter && !userAccess[userFilter]) userFilter = '';
+    sel.value = userFilter;
+    $('#user-filter-wrap').classList.toggle('hidden', opts.length < 2);
+    sel.classList.toggle('active', !!userFilter);
+  }
+  if (isAdmin) {
+    try { userFilter = sessionStorage.getItem('relay-user-filter') || ''; } catch (e) {}
+    $('#user-filter').addEventListener('change', e => {
+      userFilter = e.target.value;
+      e.target.classList.toggle('active', !!userFilter);
+      try { sessionStorage.setItem('relay-user-filter', userFilter); } catch (er) {}
+      render();
+    });
+    loadUsers().then(() => render());
+    App.every(60000, loadUsers);
+  }
   async function loadPending() {
     if (!isAdmin) return; // незарегистрированные устройства видит только администратор
     const list = (await api('/api/devices.php', { action: 'pending' })).pending;
