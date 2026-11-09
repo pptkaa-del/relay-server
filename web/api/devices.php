@@ -239,11 +239,8 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['can_ack'] = $admin || !empty($perms[$id][4]) || !empty($perms[$id][RELAY_LOCK]);
         unset($d['break_in_ts'], $d['break_in_source']);
         $d['geo'] = parse_coords((string)$d['coordinates']);
-        // координаты не заданы — условная точка на карте «55.<id>, 37.<id>» (в БД не сохраняется)
+        // координаты не заданы — на карте такие устройства собраны в кластер в точке 55.00, 37.00
         $d['geo_auto'] = $d['geo'] === null;
-        if ($d['geo_auto']) {
-            $d['geo'] = [(float)"55.$id", (float)"37.$id"];
-        }
         $d['registered'] = (bool)$d['registered'];
         $fresh = $d['last_seen_ts'] !== null && $now - $d['last_seen_ts'] <= RELAY_OFFLINE_AFTER;
         $d['online'] = $fresh && $d['status'] !== 0;

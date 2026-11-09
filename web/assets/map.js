@@ -32,6 +32,7 @@
       maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
     }).addTo(map);
     layer = L.layerGroup().addTo(map);
+    map.on('click', () => map.closePopup()); // клик по пустому месту карты (клик по точке до карты не доходит)
     map.on('focus', () => map.scrollWheelZoom.enable());   // колесо мыши — после клика по карте
     map.on('blur', () => map.scrollWheelZoom.disable());
   }
@@ -45,18 +46,46 @@
     const bi = d.break_in ? `<div class="map-alarm">ВЗЛОМ ДВЕРИ · ${ago(d.break_in.ts)}</div>` : '';
     return `<div class="map-pop"><b>${esc(d.name)}</b> <span class="muted">#${d.id}</span>${bi}
       <div>${esc(text)}</div>${d.address ? `<div class="muted">${esc(d.address)}</div>` : ''}
-      ${d.geo_auto ? `<div class="muted">координаты не заданы — условная точка ${d.geo.join(', ')}</div>` : ''}
       <div class="muted">данные: ${ago(d.last_data_ts)}</div>
       <a href="#${d.id}" class="map-open">Открыть устройство →</a></div>`;
   }
 
+  /* Подсказка по клику: первый клик по точке — подсказка, повторный (или ссылка в ней) — открыть устройство */
+  const CLUSTER = [55.0, 37.0];          // сюда собираются устройства без координат
+  const RANK = { purple: 5, red: 4, yellow: 3, blue: 2, green: 1 };
+  let pop = null, popFor = null;         // открытая подсказка и чья она (id устройства или 'cluster')
+  function showPopup(key, latlng, html) {
+    if (popFor === key && pop && map.hasLayer(pop)) {
+      if (key !== 'cluster') location.hash = '#' + key; // повторный клик — открыть устройство
+      return;
+    }
+    // closeOnClick: false — иначе Leaflet закрывает подсказку ещё до обработки повторного клика по точке;
+    // клик по пустому месту карты закрывает её (map.on('click') в ensureMap)
+    pop = L.popup({ offset: [0, -14], maxWidth: 320, autoPanPadding: [20, 20], closeOnClick: false }).setLatLng(latlng).setContent(html).openOn(map);
+    popFor = key;
+    pop.on('remove', () => { if (popFor === key) popFor = null; });
+  }
+
+  const clusterIcon = (n, color) => L.divIcon({
+    className: 'map-pin-wrap', iconSize: [34, 34], iconAnchor: [17, 17],
+    html: `<span class="cluster c-${color}">${n}</span>`,
+  });
+  function clusterHtml(list) {
+    return `<div class="map-pop"><b>Без координат: ${list.length}</b>
+      <div class="muted" style="margin-bottom:6px">точка 55.00, 37.00 — координаты задаются в «Изменить» → «Координаты»</div>
+      <div class="cluster-list">${list.map(d => { const [c, t] = status(d);
+        return `<a href="#${d.id}" class="cluster-row" title="${esc(t)}"><i class="pin c-${c}"></i><span>${esc(d.name)}</span><span class="muted">#${d.id}</span></a>`; }).join('')}</div></div>`;
+  }
+  let cluster = null;
+
   function update(list, selected) {
     const geo = list.filter(d => d.geo);
+    const noGeo = list.filter(d => !d.geo);
     const note = $('#map-note');
-    const auto = geo.filter(d => d.geo_auto).length;
-    note.textContent = auto ? `Без координат: ${auto} — показаны в условных точках «55.ID, 37.ID». Настоящие координаты задаются в «Изменить» → «Координаты».` : '';
-    $('#map').classList.toggle('hidden', !geo.length);
-    if (!geo.length || card.classList.contains('hidden')) { shown = false; return; }
+    note.textContent = noGeo.length ? `Без координат: ${noGeo.length} — собраны в кластер в точке 55.00, 37.00. Координаты задаются в «Изменить» → «Координаты».` : '';
+    const any = geo.length || noGeo.length;
+    $('#map').classList.toggle('hidden', !any);
+    if (!any || card.classList.contains('hidden')) { shown = false; return; }
     ensureMap();
     if (!shown) { shown = true; setTimeout(() => map.invalidateSize(), 0); } // карта снова видна (вернулись из устройства)
 
@@ -68,22 +97,36 @@
       let m = markers.get(d.id);
       if (!m) {
         m = L.marker(d.geo, { icon: icon(color, d.id === selected), keyboard: true, title: d.name, riseOnHover: true });
-        m.on('click', () => { location.hash = '#' + d.id; });
+        m.on('click', () => { const cur = m._d; showPopup(cur.id, cur.geo, popupHtml(cur, status(cur)[1])); });
         m.addTo(layer); markers.set(d.id, m);
       } else if (m._key !== key) {
         m.setLatLng(d.geo); m.setIcon(icon(color, d.id === selected));
       }
-      m._key = key;
+      m._key = key; m._d = d;
       m.setZIndexOffset(color === 'purple' ? 1000 : color === 'red' ? 500 : 0);
       m.unbindTooltip().bindTooltip(`${esc(d.name)} — ${esc(text)}`, { direction: 'top', offset: [0, -10] });
-      m.unbindPopup().bindPopup(popupHtml(d, text));
+      if (popFor === d.id && pop && map.hasLayer(pop)) pop.setContent(popupHtml(d, text)); // открытая подсказка — свежие данные
     }
     for (const [id, m] of markers) if (!seen.has(id)) { layer.removeLayer(m); markers.delete(id); }
 
+    // кластер устройств без координат: число и цвет самого тревожного состояния
+    if (noGeo.length) {
+      const worst = noGeo.map(d => status(d)[0]).sort((a, b) => RANK[b] - RANK[a])[0];
+      const ckey = noGeo.length + ':' + worst;
+      if (!cluster) {
+        cluster = L.marker(CLUSTER, { icon: clusterIcon(noGeo.length, worst), title: 'Устройства без координат', zIndexOffset: 200 });
+        cluster.on('click', () => showPopup('cluster', CLUSTER, clusterHtml(cluster._list)));
+        cluster.addTo(layer);
+      } else if (cluster._key !== ckey) cluster.setIcon(clusterIcon(noGeo.length, worst));
+      cluster._key = ckey; cluster._list = noGeo;
+      cluster.unbindTooltip().bindTooltip(`Без координат: ${noGeo.length}`, { direction: 'top', offset: [0, -16] });
+      if (popFor === 'cluster' && pop && map.hasLayer(pop)) pop.setContent(clusterHtml(noGeo));
+    } else if (cluster) { layer.removeLayer(cluster); cluster = null; }
+
     if (!fitted) {
       fitted = true;
-      const b = L.latLngBounds(geo.map(d => d.geo));
-      geo.length === 1 ? map.setView(geo[0].geo, 15) : map.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
+      const pts = geo.map(d => d.geo).concat(noGeo.length ? [CLUSTER] : []);
+      pts.length === 1 ? map.setView(pts[0], geo.length ? 15 : 10) : map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 16 });
     }
     // выбрано устройство — показываем его на карте
     if (selected && selected !== lastSel) {

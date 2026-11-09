@@ -596,3 +596,14 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .tile.lit[data-f="batlow"] .tile-label .dot { animation: pin-alarm-red 1.2s ease-in-out infinite; }
 @keyframes pin-alarm-red { 0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .6); } 50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); } }
 .dev-panel.state-power_off { border-top: 3px solid var(--power-off); }
+
+/* карта: кластер устройств без координат */
+.map-pin-wrap .cluster { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid #fff; color: #fff; font: 700 13px var(--font); box-shadow: 0 0 0 1px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.35); }
+.cluster.c-green { background: var(--pin-green); } .cluster.c-red { background: var(--pin-red); } .cluster.c-yellow { background: var(--pin-yellow); }
+.cluster.c-blue { background: var(--pin-blue); } .cluster.c-purple { background: var(--pin-purple); }
+.cluster-list { max-height: 220px; overflow: auto; display: grid; gap: 2px; }
+.cluster-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 6px; color: inherit !important; text-decoration: none; }
+.cluster-row:hover { background: rgba(37, 99, 235, .08); }
+.cluster-row span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cluster-row .pin { width: 10px; height: 10px; border-width: 2px; }
