@@ -60,10 +60,11 @@
   // список плат слева
   function sideHtml(d) {
     const on = d.relays.filter(r => r.state === 1).length;
+    const lockPip = d.has_lock ? `<i class="lock-pip ${d.door_state === 1 ? 'open' : d.door_state === 0 ? 'closed' : 'na'}" title="Замок: ${d.door_state == null ? 'нет данных' : d.door_state === 1 ? 'дверь открыта' : 'дверь закрыта'}"></i>` : '';
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
       <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}<span class="mono muted">#${d.id}</span></div>
-      <div class="side-item-meta side-dev-meta"><span class="pips">${pips}</span><span>вкл ${on}/${d.relays.length}</span>
+      <div class="side-item-meta side-dev-meta"><span class="pips">${pips}${lockPip}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
 
@@ -88,9 +89,10 @@
         ${buttons}</div>`;
     }).join('');
     const lockDis = dis || d.lock_access !== 'control' ? 'disabled' : '';
-    const lock = d.door_state != null && d.lock_access ? `<div class="lock-row">
-        <span>Дверь: ${d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</span>
-        <span>Замок: ${d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : '<span class="badge">обесточен</span>'}</span>
+    const lock = d.has_lock && d.lock_access ? `<div class="lock-row">
+        <b class="lock-title">Замок</b>
+        <span>Дверь: ${d.door_state == null ? '<span class="badge">нет данных</span>' : d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</span>
+        <span>Замок: ${d.lock_state == null ? '<span class="badge">нет данных</span>' : d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : '<span class="badge">обесточен</span>'}</span>
         <span class="spacer"></span>
         ${d.lock_access === 'control' ? `<button class="btn sm primary" data-c="3" data-r="5" ${lockDis}>Открыть замок</button>
         <button class="btn sm" data-c="1" data-r="5" ${lockDis}>Подать питание</button>

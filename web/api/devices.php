@@ -187,7 +187,10 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         }
         $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_low'], $d['cal_high'], $d['bat_type']);
         // замок платы ver_5_1 («реле 5»)
-        $d['lock_access'] = $admin ? 'control' : (isset($perms[$id][RELAY_LOCK]) ? ($perms[$id][RELAY_LOCK] ? 'control' : 'view') : null);
+        // плата ver_5_1 (версия 3): 4 реле и отдельный замок («реле 5») — показываем всегда, даже до первых данных о замке
+        $d['has_lock'] = $d['dev_version'] !== null && $d['dev_version'] >= 3;
+        $d['lock_access'] = !$d['has_lock'] ? null
+            : ($admin ? 'control' : (isset($perms[$id][RELAY_LOCK]) ? ($perms[$id][RELAY_LOCK] ? 'control' : 'view') : null));
         // что можно делать с устройством целиком
         $d['can_edit'] = $admin;
         $d['can_reboot'] = $admin || in_array(true, $perms[$id], true);

@@ -70,12 +70,12 @@
     renderRelays();
 
     // плата ver_5_1 (протокол v3): замок и геркон двери
-    const hasLock = d.door_state != null && !!d.lock_access;
+    const hasLock = !!d.has_lock && !!d.lock_access; // плата ver_5_1: 4 реле и отдельный замок
     $('#lockcard').classList.toggle('hidden', !hasLock);
     $$('[data-lock]').forEach(b => b.classList.toggle('hidden', d.lock_access !== 'control'));
     if (hasLock) {
-      $('#lockinfo').innerHTML = `<dt>Дверь</dt><dd>${d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</dd>
-        <dt>Замок</dt><dd>${d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : 'обесточен'}</dd>`;
+      $('#lockinfo').innerHTML = `<dt>Дверь</dt><dd>${d.door_state == null ? '<span class="muted">нет данных</span>' : d.door_state === 1 ? '<span class="badge warn">открыта</span>' : '<span class="badge success">закрыта</span>'}</dd>
+        <dt>Замок</dt><dd>${d.lock_state == null ? '<span class="muted">нет данных</span>' : d.lock_state === 1 ? '<span class="badge info">под напряжением</span>' : 'обесточен'}</dd>`;
     }
 
     const m = d.last_message;
