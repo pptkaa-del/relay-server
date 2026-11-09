@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.30';
+const RELAY_VERSION       = '3.31';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -725,7 +725,15 @@ function relay_next_cmd_id(mysqli $db): int
     return $next;
 }
 
+const RELAY_V11 = 11; // версия устройства «1-1»: первоначальная плата, в поле сигнала stat — АЦП АКБ
 const RELAY_LOCK = 5; // замок платы ver_5_1 — «реле 5» в командах 1–3
+
+/** Версия устройства «1-1» (задана в настройках): поле сигнала в stat — это АЦП АКБ. */
+function relay_is_v11(mysqli $db, int $deviceId): bool
+{
+    $res = relay_q($db, 'SELECT 1 FROM general_info WHERE id = ? AND hw_version = ?', [$deviceId, RELAY_V11]);
+    return $res instanceof mysqli_result && mysqli_num_rows($res) > 0;
+}
 
 /** Реле 4 устройства управляет замком двери (настройка «Реле 4 — замок»). */
 function relay_relay4_lock(mysqli $db, int $deviceId): bool
@@ -733,7 +741,7 @@ function relay_relay4_lock(mysqli $db, int $deviceId): bool
     static $cache = [];   // [device_id => [значение, время]] — подписчик работает долго, поэтому кэш на 30 с
     if (!isset($cache[$deviceId]) || time() - $cache[$deviceId][1] > 30) {
         // у платы ver_5_1 (версия 3) свой замок — режим «реле 4 — замок» для неё не действует
-        $res = relay_q($db, 'SELECT g.relay4_lock AND COALESCE(g.hw_version, d.version, 0) < 3
+        $res = relay_q($db, 'SELECT g.relay4_lock AND COALESCE(g.hw_version, d.version, 0) <> 3
                                FROM general_info g LEFT JOIN devices d ON d.id = g.id WHERE g.id = ?', [$deviceId]);
         $r = $res instanceof mysqli_result ? mysqli_fetch_row($res) : null;
         $cache[$deviceId] = [$r !== null && (int)$r[0] === 1, time()];

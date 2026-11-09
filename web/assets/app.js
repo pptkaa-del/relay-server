@@ -266,13 +266,13 @@ const App = (() => {
     const upd = () => {
       // «Авто» — версия, которую сообщает устройство (form.dataset.reportedVersion)
       const ver = +(form.elements.hw_version.value || form.dataset.reportedVersion || 0);
-      const v1 = ver === 1;
+      const v1 = ver === 1; // у версии 1-1 (11) АКБ есть — в поле сигнала
       const cb = form.elements.bat_monitor;
       cb.disabled = v1;
       const on = cb.checked && !v1;
       form.querySelectorAll('[data-bat-box]').forEach(el => el.classList.toggle('hidden', !on));
       // версия 3 (ver_5_1): свой замок — «реле 4 — замок» недоступно, есть «Замок не используется»
-      const v3 = ver >= 3;
+      const v3 = ver === 3;
       const r4 = form.elements.relay4_lock;
       if (r4 && r4.type === 'checkbox') {
         if (v3) r4.checked = false;
@@ -306,7 +306,7 @@ const App = (() => {
           <button class="btn bad" value="ok" id="mqtt-block-ok">Не принимать</button></div></form>`;
       document.body.appendChild(dlg);
     }
-    dlg.querySelector('#mqtt-block-text').textContent = `Устройство «${d.name}» (#${d.id}, версия 1).`;
+    dlg.querySelector('#mqtt-block-text').textContent = `Устройство «${d.name}» (#${d.id}, версия ${d.dev_version === 11 ? '1-1' : '1'}).`;
     dlg.querySelector('#mqtt-block-result').className = 'result';
     dlg.querySelector('#mqtt-block-result').textContent = '';
     const form = dlg.querySelector('form');
@@ -335,5 +335,8 @@ const App = (() => {
       <span class="spacer"></span>${d.can_reboot ? `<button class="btn sm" data-mqtt-unblock="${d.id}">Принимать снова</button>` : ''}</div>`;
   }
 
-  return { mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /** Подпись версии: 11 → «1-1» */
+  const verLabel = v => v === 11 ? '1-1' : String(v);
+
+  return { verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

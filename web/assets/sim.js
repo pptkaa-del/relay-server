@@ -11,7 +11,7 @@
         <b>Работает: ${sims.length}</b><span class="spacer"></span><button class="btn sm ghost danger-text" data-stop-all>Остановить все</button></div>
       <div class="table-wrap"><table class="tbl sim-tbl"><thead><tr><th>Устройство</th><th>Реле (переключить на месте)</th><th>stat</th><th>Команды</th><th></th></tr></thead><tbody>
       ${sims.map(s => `<tr>
-        <td><b class="mono">#${s.device_id}</b><div class="muted" style="font-size:12px">${esc(s.broker_name)} · версия ${s.version} · ${s.interval_sec} с</div></td>
+        <td><b class="mono">#${s.device_id}</b><div class="muted" style="font-size:12px">${esc(s.broker_name)} · версия ${s.version === 11 ? '1-1' : s.version} · ${s.interval_sec} с</div></td>
         <td><div class="sim-relays">${s.relays.map((v, i) => `<button class="sim-relay ${v ? 'on' : ''}" data-sim="${s.id}" data-what="relay${i + 1}"
               title="Реле ${i + 1}: ${v ? 'вкл' : 'выкл'} — нажмите, чтобы переключить без команды">${i + 1}</button>`).join('')}
             ${s.version === 3 ? `<button class="sim-relay door ${s.door_state ? 'open' : ''}" data-sim="${s.id}" data-what="door" title="Датчик двери">дверь ${s.door_state ? 'откр' : 'закр'}</button>

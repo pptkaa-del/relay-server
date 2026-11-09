@@ -119,7 +119,7 @@
         <a class="btn sm" href="/device.php?id=${d.id}">Подробнее: журнал, АКБ, настройки</a>
         <span class="spacer"></span>
         <button class="btn sm ghost" data-cmd="4" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.refresh}<span class="hide-narrow">Запросить статус</span></button>
-        ${!d.can_reboot ? '' : d.dev_version === 1
+        ${!d.can_reboot ? '' : (d.dev_version === 1 || d.dev_version === 11)
           ? (d.mqtt_block ? `<button class="btn sm ghost" data-mqtt-unblock="${d.id}">${ICONS.check}<span class="hide-narrow">Принимать снова</span></button>`
                           : `<button class="btn sm ghost danger-text" data-mqtt-block="${d.id}" title="Брокер отключит устройство — версия 1 перезагрузится">${ICONS.power}<span class="hide-narrow">Не принимать сообщения</span></button>`)
           : `<button class="btn sm ghost danger-text" data-cmd="5" data-id="${d.id}" ${d.registered ? '' : 'disabled'}>${ICONS.power}<span class="hide-narrow">Перезагрузить устройство</span></button>`}

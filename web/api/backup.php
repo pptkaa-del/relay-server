@@ -60,6 +60,10 @@ function legacy_item(array $g, ?array $akb, ?string $sim): array
         $it["name_reley_$i"] = $n !== '' ? $n : "Реле $i";
     }
     $it['relays_disabled'] = (string)$off;
+    // dev_ver «1.1» — первоначальная плата, у которой в поле сигнала значение АКБ (версия «1-1»)
+    if (trim((string)($g['dev_ver'] ?? '')) === '1.1') {
+        $it['hw_version'] = (string)RELAY_V11;
+    }
     $bat = 'контроль АКБ выключен';
     if ($akb === null) {
         $it['bat_monitor'] = '0';
@@ -94,7 +98,7 @@ function legacy_item(array $g, ?array $akb, ?string $sim): array
     if ($note !== '') {
         $it['_note'] = $note; // примечание старой системы → комментарий к устройству
     }
-    $it['_info'] = ($note !== '' ? "комментарий «{$note}» · " : '') . $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
+    $it['_info'] = ($note !== '' ? "комментарий «{$note}» · " : '') . (isset($it['hw_version']) ? 'версия 1-1 · ' : '') . $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
     return $it;
 }
 

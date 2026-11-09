@@ -64,7 +64,7 @@
     // кнопки по правам: изменение — только администратор, перезагрузка — при управлении хотя бы одним реле
     $('#b-edit').classList.toggle('hidden', !d.can_edit);
     // версия 1 не умеет команду перезагрузки — вместо неё «Не принимать сообщения»
-    const v1 = d.dev_version === 1;
+    const v1 = d.dev_version === 1 || d.dev_version === 11; // 1 и 1-1: нет команды перезагрузки
     $('#b-reboot').classList.toggle('hidden', !d.can_reboot || v1);
     $('#b-mqtt-block').classList.toggle('hidden', !d.can_reboot || !v1 || !!d.mqtt_block);
     $('#mqtt-block').innerHTML = App.mqttBlockBanner(d);
@@ -106,7 +106,7 @@
       <dt>Связь</dt><dd>${stateBadge(d.state)}</dd>
       <dt>Сигнал GSM</dt><dd>${signalBars(d.signal_level)} <span class="muted">${d.signal_level ?? '—'}/31</span></dd>
       <dt>АКБ</dt><dd>${d.bat_on ? (App.batteryHtml(d) || '—') : '<span class="muted">контроль выключен</span>'}</dd>
-      <dt>Версия</dt><dd>${d.dev_version ? d.dev_version + (d.hw_version ? ' (задана в настройках)' : ' (по данным устройства)') : '—'}${d.version && d.hw_version && d.version !== d.hw_version ? ` <span class="muted">· устройство сообщает v${d.version}</span>` : ''}</dd>
+      <dt>Версия</dt><dd>${d.dev_version ? App.verLabel(d.dev_version) + (d.hw_version ? ' (задана в настройках)' : ' (по данным устройства)') : '—'}${d.version && d.hw_version && d.version !== d.hw_version ? ` <span class="muted">· устройство сообщает v${d.version}</span>` : ''}</dd>
       <dt>Последняя команда</dt><dd>${lc ? esc(cmdLabel(+lc.command, +lc.relay_num, d.relay4_lock)) + ' ' + (+lc.relay_num === 4 && d.relay4_lock ? '' : App.cmdStatusBadge(lc.status)) + `<div class="muted">${esc(lc.created_at)}</div>` : '—'}</dd>
       <dt>Координаты</dt><dd>${d.coordinates ? esc(d.coordinates) : '—'}</dd>
       <dt>Первое подключение</dt><dd>${d.created_at ? esc(d.created_at) : '—'}</dd>`;

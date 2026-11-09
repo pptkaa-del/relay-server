@@ -217,7 +217,7 @@ function handleStat(array $d, bool $retained): void
     $newConn = $stat === 0 ? 'offline' : 'online';
     if ($current['conn_state'] !== $newConn) {
         $newConn === 'online'
-            ? relay_event($c, $id, 'online', 'Устройство на связи (сигнал ' . $sl . ')', 'success')
+            ? relay_event($c, $id, 'online', 'Устройство на связи' . (relay_is_v11($c, $id) ? '' : ' (сигнал ' . $sl . ')'), 'success')
             : relay_event($c, $id, 'offline', 'Устройство сообщило о переходе в оффлайн (stat = 0)', 'warning');
     }
     if ($stat === 2 && (int)$current['status'] !== 2) {
@@ -527,7 +527,7 @@ function syncSims(): void
         $seen[$k] = true;
         $fromDb = [
             'row_id' => (int)$row['id'], 'broker' => (int)$row['broker_id'], 'device' => (int)$row['device_id'],
-            'version' => in_array((int)$row['version'], [1, 2, 3], true) ? (int)$row['version'] : 2, 'interval' => max(5, (int)$row['interval_sec']),
+            'version' => in_array((int)$row['version'], [1, 11, 2, 3], true) ? (int)$row['version'] : 2, 'interval' => max(5, (int)$row['interval_sec']),
             'sl' => (int)$row['signal_level'], 'bat' => (int)$row['bat_adc'],
         ];
         $relays = array_map('intval', explode(',', $row['relays'] . ',0,0,0,0'));
@@ -592,8 +592,11 @@ function simStat(string $k): void
     // небольшие колебания сигнала и АЦП АКБ, как у живой платы
     $sl = max(5, min(31, $s['sl'] + random_int(-2, 2)));
     $bat = max(0, $s['bat'] + random_int(-3, 3));
-    $p = pack('V*', $s['device'], $s['version'], ...$s['relays']) . pack('V*', 1, $sl, 0);
-    if ($s['version'] >= 2) {
+    // версия 1-1: пакет версии 1 (36 байт), но в поле сигнала — АЦП АКБ
+    $p = $s['version'] === RELAY_V11
+        ? pack('V*', $s['device'], 1, ...$s['relays']) . pack('V*', 1, $bat, 0)
+        : pack('V*', $s['device'], $s['version'], ...$s['relays']) . pack('V*', 1, $sl, 0);
+    if ($s['version'] >= 2 && $s['version'] !== RELAY_V11) {
         $p .= pack('V', $bat); // версия 1 (первоначальная прошивка) — 36 байт, без АКБ
     }
     if ($s['version'] === 3) {

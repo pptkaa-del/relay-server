@@ -48,15 +48,15 @@ function sim_phone_from_post(): string
     return '+7' . $d;
 }
 
-/** Версия устройства из формы: '' — по данным устройства (NULL), 1–3 */
+/** Версия устройства из формы: '' — по данным устройства (NULL), 1, 11 («1-1»: в поле сигнала — АЦП АКБ), 2, 3 */
 function hw_version_from_post(): ?int
 {
     $v = (string)($_POST['hw_version'] ?? '');
     if ($v === '') {
         return null;
     }
-    if (!in_array($v, ['1', '2', '3'], true)) {
-        relay_json(['error' => 'Версия устройства: 1, 2 или 3'], 400);
+    if (!in_array($v, ['1', '11', '2', '3'], true)) {
+        relay_json(['error' => 'Версия устройства: 1, 1-1, 2 или 3'], 400);
     }
     return (int)$v;
 }
@@ -188,17 +188,23 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['comments_count'] = (int)$d['comments_count'];
         $d['last_comment'] = $d['last_comment'] === null ? null : mb_substr($d['last_comment'], 0, 200);
         // контроль АКБ: выключен в настройках или версия 1 (в её пакете нет АКБ) — напряжение не показываем
+        // версия 1-1 (11): первоначальная плата, в поле «уровень сигнала» пакета stat — АЦП АКБ
+        if ($d['dev_version'] === RELAY_V11) {
+            $d['bat_adc'] = $d['signal_level'];
+            $d['bat_adc_ts'] = $d['last_seen_ts'];
+            $d['signal_level'] = null; // настоящего уровня сигнала такая плата не передаёт
+        }
         $d['bat_on'] = $d['bat_monitor'] && ($d['dev_version'] === null || $d['dev_version'] >= 2);
         if (!$d['bat_on']) {
             $d['bat_adc'] = $d['bat_adc_ts'] = null;
         }
         // замок и датчик двери платы ver_5_1 — только у версии 3 и если замок используется
         $d['lock_unused'] = (int)$d['lock_unused'] === 1;
-        if (($d['dev_version'] !== null && $d['dev_version'] < 3) || $d['lock_unused']) {
+        if (($d['dev_version'] !== null && $d['dev_version'] !== 3) || $d['lock_unused']) {
             $d['door_state'] = $d['lock_state'] = null;
         }
         // у версии 3 свой замок: режим «реле 4 — замок» не действует
-        if ($d['dev_version'] !== null && $d['dev_version'] >= 3) {
+        if ($d['dev_version'] === 3) {
             $d['relay4_lock'] = false;
             foreach ($d['relays'] as &$rr) {
                 $rr['lock'] = false;
@@ -208,7 +214,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['bat_voltage'] = relay_battery_voltage($d['bat_adc'], $d['cal_low'], $d['cal_high'], $d['bat_type']);
         // замок платы ver_5_1 («реле 5»)
         // плата ver_5_1 (версия 3): 4 реле и отдельный замок («реле 5») — показываем всегда, даже до первых данных о замке
-        $d['has_lock'] = $d['dev_version'] !== null && $d['dev_version'] >= 3 && !$d['lock_unused'];
+        $d['has_lock'] = $d['dev_version'] === 3 && !$d['lock_unused'];
         $d['lock_access'] = !$d['has_lock'] ? null
             : ($admin ? 'control' : (isset($perms[$id][RELAY_LOCK]) ? ($perms[$id][RELAY_LOCK] ? 'control' : 'view') : null));
         // что можно делать с устройством целиком
@@ -407,10 +413,10 @@ switch ($action) {
             $names[] = "для кого установлено — «{$ownerNew}»";
         }
         $hwMode = (string)($_POST['hw_version'] ?? 'keep');
-        if (in_array($hwMode, ['auto', '1', '2', '3'], true)) {
+        if (in_array($hwMode, ['auto', '1', '11', '2', '3'], true)) {
             $set[] = 'hw_version = ?';
             $params[] = $hwMode === 'auto' ? null : (int)$hwMode;
-            $names[] = $hwMode === 'auto' ? 'версия — по данным устройства' : "версия $hwMode";
+            $names[] = $hwMode === 'auto' ? 'версия — по данным устройства' : 'версия ' . ($hwMode === '11' ? '1-1' : $hwMode);
         }
         $batMode = (string)($_POST['bat_monitor'] ?? '');
         if ($batMode === '1' || $batMode === '0') {
@@ -455,7 +461,7 @@ switch ($action) {
         }
         $d = $rows[0];
         if ($action === 'mqtt_block') {
-            if ($d['dev_version'] !== 1) {
+            if (!in_array($d['dev_version'], [1, RELAY_V11], true)) {
                 relay_json(['error' => 'Только для устройств версии 1: у остальных есть команда «Перезагрузить устройство»'], 400);
             }
             $min = (int)($_POST['minutes'] ?? 5);
@@ -522,11 +528,12 @@ switch ($action) {
         $batType = relay_bat_type($g['bat_type'] ?? 12);
         $bt = RELAY_BAT_TYPES[$batType];
         $cal = ['lo' => $g[$bt['col_low']] ?? null, 'hi' => $g[$bt['col_high']] ?? null];
+        $field = (int)($g['dev_version'] ?? 0) === RELAY_V11 ? '$.sl' : '$.bat_adc'; // версия 1-1: АЦП АКБ в поле сигнала
         $rows = relay_rows(relay_q($connect,
-            "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$.bat_adc') AS UNSIGNED) AS adc
+            "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$field') AS UNSIGNED) AS adc
                FROM mqtt_messages
               WHERE broker_id = 1 AND device_id = ? AND topic = 'stat' AND direction = 'in'
-                AND ts > NOW() - INTERVAL ? HOUR AND JSON_VALUE(decoded, '$.bat_adc') IS NOT NULL
+                AND ts > NOW() - INTERVAL ? HOUR AND JSON_VALUE(decoded, '$field') IS NOT NULL
               ORDER BY id", [$id, $hours]));
         $points = [];
         foreach ($rows as $r) {

@@ -71,7 +71,7 @@ switch ($action) {
             relay_json(['error' => 'Одновременно можно симулировать не больше ' . SIM_MAX . ' устройств'], 400);
         }
         $interval = max(5, min(3600, (int)($_POST['interval_sec'] ?? 60)));
-        $version = in_array((int)($_POST['version'] ?? 2), [1, 2, 3], true) ? (int)$_POST['version'] : 2;
+        $version = in_array((int)($_POST['version'] ?? 2), [1, 11, 2, 3], true) ? (int)$_POST['version'] : 2;
         $local = (int)$broker['is_local'] === 1;
         $started = [];
         foreach ($ids as $dev) {

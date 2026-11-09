@@ -110,6 +110,7 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field">Версия устройства<select class="input" name="hw_version">
           <option value="">Авто — по данным устройства</option>
           <option value="1">1 — первоначальная плата и прошивка (без АКБ)</option>
+          <option value="11">1-1 — первоначальная плата: в поле сигнала — значение АКБ</option>
           <option value="2">2 — старая плата, новая прошивка</option>
           <option value="3">3 — новая плата ver_5_1 и прошивка (замок, дверь)</option></select></label>
         <label class="check bat-monitor"><input type="checkbox" name="bat_monitor" value="1" checked> Контроль АКБ
