@@ -75,6 +75,8 @@
     const relays = d.relays.map(r => {
       const b = n => busy.has(d.id + ':' + r.num) || dis ? 'disabled' : '';
       const buttons = !r.control ? `<div class="ro-box">${viewOnly}</div>`
+        : r.wash ? `<div class="btn-row lock-btns">
+          <button class="btn sm primary" data-c="3" data-r="4" ${b(3)} title="Запустить омывание (перезапуск реле 4)">Запуск</button></div>`
         : r.lock ? `<div class="btn-row lock-btns">
           <button class="btn sm primary" data-c="3" data-r="4" ${b(3)} title="Кратковременно открыть замок">Открыть</button>
           <button class="btn sm ok" data-c="1" data-r="4" ${b(1)}>Закрыть</button>
@@ -85,7 +87,7 @@
           <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button></div>`;
       return `<div class="relay-card${r.lock ? ' is-lock' : ''}">
         <div class="relay-card-top"><span class="relay-card-name" title="${esc(r.name)}">${esc(r.name)}</span>${relayBadge(r.state, r.lock)}</div>
-        <div class="muted" style="font-size:12px">${r.lock ? 'Замок · реле 4' : 'Реле ' + r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
+        <div class="muted" style="font-size:12px">${r.lock ? 'Замок · реле 4' : r.wash ? 'Омывание · реле 4' : 'Реле ' + r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
         ${buttons}</div>`;
     }).join('');
     const lockDis = dis || d.lock_access !== 'control' ? 'disabled' : '';
@@ -184,9 +186,9 @@
     if (relay) { busy.add(key); render(); } else if (btn) btn.disabled = true;
     const done = () => { busy.delete(key); load().catch(() => {}); };
     try {
-      const lock4 = relay === 4 && d.relay4_lock;
+      const lock4 = relay === 4 && (d.relay4_wash ? 'wash' : d.relay4_lock);
       await sendCommand({ url: '/api/devices.php', params: { action: 'command', id, command, relay }, statusUrl: '/api/devices.php',
-        statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, relay, lock4)}`, onDone: done, quiet: lock4 });
+        statusParams: { action: 'command_status' }, label: `${d.name}: ${cmdLabel(command, relay, lock4)}`, onDone: done, quiet: lock4 === true });
     } catch (er) { busy.delete(key); render(); toast(er.message, 'err'); }
     finally { if (!relay && btn) btn.disabled = false; }
   }
@@ -267,7 +269,7 @@
     e.preventDefault();
     const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
-    p.relay4_lock = bulkForm.elements.relay4_lock.value;
+    p.relay4_mode = bulkForm.elements.relay4_mode.value;
     p.owner = bulkForm.elements.owner.value.trim();
     p.hw_version = bulkForm.elements.hw_version.value;
     p.bat_monitor = bulkForm.elements.bat_monitor.value;
@@ -310,7 +312,7 @@
     for (const k of ['id', 'name', 'address', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = F(k).value.trim();
     p.bat_monitor = F('bat_monitor').checked && F('hw_version').value !== '1' ? '1' : '0';
     p.lock_unused = F('lock_unused').checked ? '1' : '0';
-    p.relay4_lock = F('relay4_lock').checked ? '1' : '0';
+    p.relay4_mode = F('relay4_mode').value;
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую устройство в брокере…';

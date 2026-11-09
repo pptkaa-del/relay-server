@@ -7,8 +7,9 @@
   const busy = new Set();
 
   async function send(command, relay) {
-    const lock4 = relay === 4 && !!(dev && dev.relay4_lock);
-    const label = `${dev ? dev.name : '#' + id}: ${cmdLabel(command, relay, lock4)}`;
+    const lock4 = relay === 4 && !!(dev && dev.relay4_lock); // замок: результат команды не показываем
+    const mode4 = relay === 4 && dev && dev.relay4_wash ? 'wash' : lock4;
+    const label = `${dev ? dev.name : '#' + id}: ${cmdLabel(command, relay, mode4)}`;
     const key = command + ':' + relay;
     if (busy.has(key)) return;
     busy.add(key); renderRelays();
@@ -30,6 +31,8 @@
         : `<span class="badge ${st === 1 ? 'success' : st === 2 ? 'warning' : ''}">${RSTATE[st]}</span>`;
       const b = n => busy.has(n + ':' + r.num) ? 'disabled' : '';
       const buttons = !r.control ? '<div class="ro-box"><span class="muted ro-note">только просмотр</span></div>'
+        : r.wash ? `<div class="btn-row lock-btns">
+          <button class="btn sm primary" data-c="3" data-r="4" ${b(3)} title="Запустить омывание (перезапуск реле 4)">Запуск</button></div>`
         : r.lock ? `<div class="btn-row lock-btns">
           <button class="btn sm primary" data-c="3" data-r="4" ${b(3)} title="Кратковременно открыть замок">Открыть</button>
           <button class="btn sm ok" data-c="1" data-r="4" ${b(1)}>Закрыть</button>
@@ -40,7 +43,7 @@
           <button class="btn sm" data-c="3" data-r="${r.num}" ${b(3)} title="Выключить и через 1 с включить">${ICONS.restart}</button></div>`;
       return `<div class="relay-card${r.lock ? ' is-lock' : ''}">
         <div class="relay-card-top"><span class="relay-card-name" title="${esc(r.name)}">${esc(r.name)}</span>${badge}</div>
-        <div class="muted" style="font-size:12px">${r.lock ? 'Замок · реле 4' : 'Реле ' + r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
+        <div class="muted" style="font-size:12px">${r.lock ? 'Замок · реле 4' : r.wash ? 'Омывание · реле 4' : 'Реле ' + r.num}${r.ts ? ' · изм. ' + fmtTime(r.ts) : ''}</div>
         ${buttons}</div>`;
     }).join('');
     $('#relays-note').textContent = dev.online ? '' : 'Устройство не на связи: команды выполнятся при подключении';
@@ -114,7 +117,7 @@
       <dt>Сигнал GSM</dt><dd>${signalBars(d.signal_level)} <span class="muted">${d.signal_level ?? '—'}/31</span></dd>
       <dt>АКБ</dt><dd>${d.bat_on ? (App.batteryHtml(d) || '—') : '<span class="muted">контроль выключен</span>'}</dd>
       <dt>Версия</dt><dd>${d.dev_version ? App.verLabel(d.dev_version) + (d.hw_version ? ' (задана в настройках)' : ' (по данным устройства)') : '—'}${d.version && d.hw_version && d.version !== d.hw_version ? ` <span class="muted">· устройство сообщает v${d.version}</span>` : ''}</dd>
-      <dt>Последняя команда</dt><dd>${lc ? esc(cmdLabel(+lc.command, +lc.relay_num, d.relay4_lock)) + ' ' + (+lc.relay_num === 4 && d.relay4_lock ? '' : App.cmdStatusBadge(lc.status)) + `<div class="muted">${esc(lc.created_at)}</div>` : '—'}</dd>
+      <dt>Последняя команда</dt><dd>${lc ? esc(cmdLabel(+lc.command, +lc.relay_num, d.relay4_wash ? 'wash' : d.relay4_lock)) + ' ' + (+lc.relay_num === 4 && d.relay4_lock ? '' : App.cmdStatusBadge(lc.status)) + `<div class="muted">${esc(lc.created_at)}</div>` : '—'}</dd>
       <dt>Координаты</dt><dd>${d.coordinates ? esc(d.coordinates) : '—'}</dd>
       <dt>Первое подключение</dt><dd>${d.created_at ? esc(d.created_at) : '—'}</dd>`;
   }
@@ -275,7 +278,7 @@
     form.elements.bat_monitor.checked = dev.bat_monitor !== false;
     form.dispatchEvent(new Event('hw-version'));
     form.elements.bat_type.value = String(dev.bat_type || 12);
-    form.elements.relay4_lock.checked = !!dev.relay4_lock;
+    form.elements.relay4_mode.value = dev.relay4_wash ? 'wash' : dev.relay4_lock ? 'lock' : 'normal';
     fillCal(); form.dispatchEvent(new Event('bat-type'));
     $('#cal-current').innerHTML = dev.bat_adc != null ? `Текущее значение АЦП: <b class="mono">${dev.bat_adc}</b> (${fmtTime(dev.bat_adc_ts)})` : 'Устройство ещё не передавало значение АЦП АКБ.';
     // подписи всех четырёх реле, включая отключённые (их нет в dev.relays)
@@ -291,7 +294,7 @@
     for (const k of ['name', 'address', 'coordinates', 'sim_phone', 'owner', 'relay1', 'relay2', 'relay3', 'relay4', 'bat_type', 'cal_low', 'cal_high', 'hw_version']) p[k] = form.elements[k].value;
     p.bat_monitor = form.elements.bat_monitor.checked && form.elements.hw_version.value !== '1' ? '1' : '0';
     p.lock_unused = form.elements.lock_unused.checked ? '1' : '0';
-    p.relay4_lock = form.elements.relay4_lock.checked ? '1' : '0';
+    p.relay4_mode = form.elements.relay4_mode.value;
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }
   });

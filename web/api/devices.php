@@ -61,6 +61,13 @@ function hw_version_from_post(): ?int
     return (int)$v;
 }
 
+/** Режим реле 4 из формы: relay4_mode = normal | lock | wash (или старый флажок relay4_lock) → [замок, омывание] */
+function relay4_mode_from_post(): array
+{
+    $m = (string)($_POST['relay4_mode'] ?? (($_POST['relay4_lock'] ?? '0') === '1' ? 'lock' : 'normal'));
+    return [$m === 'lock' ? 1 : 0, $m === 'wash' ? 1 : 0];
+}
+
 /** Отключённые реле из формы (relay1_off … relay4_off = 1) → битовая маска */
 function disabled_from_post(): int
 {
@@ -115,7 +122,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                COALESCE(NULLIF(g.name_obj, ''), d.name, CONCAT('Устройство ', x.id)) AS name,
                COALESCE(NULLIF(g.address, ''), d.location, '') AS address,
                COALESCE(g.coordinates, '') AS coordinates, g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26,
-               COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock,
+               COALESCE(g.bat_type, 12) AS bat_type, COALESCE(g.relay4_lock, 0) AS relay4_lock, COALESCE(g.relay4_wash, 0) AS relay4_wash,
                COALESCE(g.relays_disabled, 0) AS relays_disabled, COALESCE(g.sim_phone, '') AS sim_phone, COALESCE(g.owner, '') AS owner,
                g.hw_version, COALESCE(g.bat_monitor, 1) AS bat_monitor,
                UNIX_TIMESTAMP(g.mqtt_block_at) AS mqtt_block_ts, UNIX_TIMESTAMP(g.mqtt_block_until) AS mqtt_block_until_ts,
@@ -149,6 +156,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         }
         $d['id'] = $id;
         $d['relay4_lock'] = (int)$d['relay4_lock'] === 1;
+        $d['relay4_wash'] = (int)$d['relay4_wash'] === 1;   // реле 4 — омывание: только «Запуск»
         $mask = (int)$d['relays_disabled'];
         $d['relays_disabled'] = array_values(array_filter([1, 2, 3, 4], fn($i) => ($mask >> ($i - 1)) & 1));
         $d['relay_names'] = [];
@@ -163,6 +171,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
                 $d['relays'][] = ['num' => $i, 'name' => ($d["name_reley_$i"] ?? '') ?: "Реле $i",
                                   'state' => $relays[$id][$i]['state'] ?? null, 'ts' => $relays[$id][$i]['ts'] ?? null,
                                   'lock' => $i === 4 && $d['relay4_lock'],
+                                  'wash' => $i === 4 && $d['relay4_wash'],
                                   'control' => $admin || $perms[$id][$i]];
             }
             unset($d["name_reley_$i"]);
@@ -220,7 +229,7 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         // что можно делать с устройством целиком
         $d['can_edit'] = $admin;
         $d['can_reboot'] = $admin || in_array(true, $perms[$id], true);
-        $d['can_all'] = $mask === 0
+        $d['can_all'] = $mask === 0 && !$d['relay4_wash']
             && ($admin || (!empty($perms[$id][1]) && !empty($perms[$id][2]) && !empty($perms[$id][3]) && !empty($perms[$id][4])));
         // дверь: замок на реле 4 (вкл — закрыта) или геркон платы ver_5_1
         $r4 = $relays[$id][4]['state'] ?? null;
@@ -297,7 +306,7 @@ switch ($action) {
         $f = fn($k, $max = 200) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max);
         $name = $f('name') ?: "Устройство $id";
         [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
-        $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
+        [$lock4, $wash4] = relay4_mode_from_post();
         $off = disabled_from_post();
         $sim = sim_phone_from_post();
         $owner = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200); // для кого установлено
@@ -317,12 +326,12 @@ switch ($action) {
         if (($hw ?? (int)($rv[0] ?? 0)) >= 3) {
             $lock4 = 0;
         }
-        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
+        relay_q($connect, "UPDATE general_info SET bat_type = ?, relay4_lock = ?, relay4_wash = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$batType, $lock4, $off, $sim, $owner, $hw, $batOn, $lockUnused, $calLo, $calHi, $id]);
+            [$batType, $lock4, $wash4, $off, $sim, $owner, $hw, $batOn, $lockUnused, $calLo, $calHi, $id]);
         relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$name, $f('address', 100), $id]);
         relay_event($connect, $id, 'info', 'Изменены данные устройства: название, адрес, подписи реле, АКБ ' . $batType . ' В'
-            . ($lock4 ? ', реле 4 — замок' : '') . ($off ? ', отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : ''),
+            . ($lock4 ? ', реле 4 — замок' : '') . ($wash4 ? ', реле 4 — омывание' : '') . ($off ? ', отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : ''),
             'info', null, $login);
         relay_json(['ok' => true]);
 
@@ -334,6 +343,10 @@ switch ($action) {
         $offRes = relay_q($connect, 'SELECT relays_disabled FROM general_info WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
         $offRow = $offRes instanceof mysqli_result ? mysqli_fetch_row($offRes) : null;
         $offMask = (int)($offRow[0] ?? 0);
+        if (relay_relay4_wash($connect, (int)($_POST['id'] ?? 0)) && (($cmdRelay === 4 && $cmdCode !== 3) || ($cmdRelay === 0 && $cmdCode <= 3))) {
+            relay_json(['error' => $cmdRelay === 4 ? 'Реле 4 — омывание: доступна только команда «Запуск»'
+                                                   : 'Реле 4 — омывание: команды «всем реле» недоступны'], 400);
+        }
         if ($cmdCode <= 3 && (($cmdRelay >= 1 && $cmdRelay <= 4 && (($offMask >> ($cmdRelay - 1)) & 1)) || ($cmdRelay === 0 && $offMask))) {
             relay_json(['error' => $cmdRelay ? "Реле $cmdRelay отключено в настройках устройства" : 'Есть отключённые реле — команда «всем реле» недоступна'], 400);
         }
@@ -361,7 +374,7 @@ switch ($action) {
         $name = $f('name', 200) ?: "Устройство $id";
         $address = $f('address', 300);
         [$batType, $colLo, $calLo, $colHi, $calHi] = bat_from_post();
-        $lock4 = ($_POST['relay4_lock'] ?? '0') === '1' ? 1 : 0;
+        [$lock4, $wash4] = relay4_mode_from_post();
         $off = disabled_from_post();
         $sim = sim_phone_from_post();
         $owner = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200); // для кого установлено
@@ -384,9 +397,9 @@ switch ($action) {
             $relays[$i] = $f("relay$i", 60) ?: "Реле $i";
         }
         relay_q($connect, "UPDATE general_info SET name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
-                                  bat_type = ?, relay4_lock = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
+                                  bat_type = ?, relay4_lock = ?, relay4_wash = ?, relays_disabled = ?, sim_phone = ?, owner = ?, hw_version = ?, bat_monitor = ?, lock_unused = ?,
                                   `$colLo` = ?, `$colHi` = ? WHERE id = ?",
-            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $off, $sim, $owner, $hwAdd, $batAdd, $lockUnusedAdd, $calLo, $calHi, $id]);
+            [$relays[1], $relays[2], $relays[3], $relays[4], $batType, $lock4, $wash4, $off, $sim, $owner, $hwAdd, $batAdd, $lockUnusedAdd, $calLo, $calHi, $id]);
         relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
         relay_event($connect, $id, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
         relay_json(['ok' => true, 'id' => $id, 'mqtt' => [
@@ -437,14 +450,20 @@ switch ($action) {
             $params[] = (int)$unusedMode;
             $names[] = $unusedMode === '1' ? 'замок платы ver_5_1 не используется' : 'замок платы ver_5_1 используется';
         }
-        $lockMode = (string)($_POST['relay4_lock'] ?? '');
-        if ($lockMode === '1' || $lockMode === '0') {
+        $r4Mode = (string)($_POST['relay4_mode'] ?? '');
+        $lockMode = (string)($_POST['relay4_lock'] ?? '');   // старый вариант: 1 / 0
+        if ($r4Mode === '' && ($lockMode === '1' || $lockMode === '0')) {
+            $r4Mode = $lockMode === '1' ? 'lock' : 'normal';
+        }
+        if (in_array($r4Mode, ['normal', 'lock', 'wash'], true)) {
             $set[] = 'relay4_lock = ?';
-            $params[] = (int)$lockMode;
-            $names[] = $lockMode === '1' ? 'реле 4 — замок двери' : 'реле 4 — обычное реле';
+            $params[] = $r4Mode === 'lock' ? 1 : 0;
+            $set[] = 'relay4_wash = ?';
+            $params[] = $r4Mode === 'wash' ? 1 : 0;
+            $names[] = ['normal' => 'реле 4 — обычное реле', 'lock' => 'реле 4 — замок двери', 'wash' => 'реле 4 — омывание'][$r4Mode];
         }
         if (!$set) {
-            relay_json(['error' => 'Укажите, что изменить: для кого установлено, названия реле, версию, контроль АКБ или «Реле 4 — замок двери»'], 400);
+            relay_json(['error' => 'Укажите, что изменить: для кого установлено, названия реле, версию, контроль АКБ или режим реле 4'], 400);
         }
         $updated = $missing = [];
         foreach ($ids as $id) {

@@ -407,3 +407,9 @@ CREATE TABLE IF NOT EXISTS `device_comments` (
 ALTER TABLE `general_info`
     ADD COLUMN IF NOT EXISTS `mqtt_block_at` DATETIME DEFAULT NULL,      -- когда заблокировано (NULL — принимаются)
     ADD COLUMN IF NOT EXISTS `mqtt_block_until` DATETIME DEFAULT NULL;   -- до какого времени (NULL — до отмены)
+
+-- ---------------------------------------------------------------------------
+-- v3.33: реле 4 — омывание (только кнопка «Запуск» = перезапуск реле)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `relay4_wash` TINYINT(1) NOT NULL DEFAULT 0;

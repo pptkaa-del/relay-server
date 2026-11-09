@@ -53,6 +53,9 @@ function legacy_item(array $g, ?array $akb, ?string $sim): array
     $off = 0;
     for ($i = 1; $i <= 4; $i++) {
         $n = trim((string)($g["name_reley_$i"] ?? ''));
+        if ($i === 4 && preg_match('/^wash/i', $n)) {
+            $it['relay4_wash'] = '1'; // «Washing» — реле 4 управляет омыванием
+        }
         if (strcasecmp($n, 'not_used') === 0) {
             $off |= 1 << ($i - 1);
             $n = '';
@@ -98,7 +101,7 @@ function legacy_item(array $g, ?array $akb, ?string $sim): array
     if ($note !== '') {
         $it['_note'] = $note; // примечание старой системы → комментарий к устройству
     }
-    $it['_info'] = ($note !== '' ? "комментарий «{$note}» · " : '') . (isset($it['hw_version']) ? 'версия 1-1 · ' : '') . $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
+    $it['_info'] = ($note !== '' ? "комментарий «{$note}» · " : '') . (isset($it['hw_version']) ? 'версия 1-1 · ' : '') . (isset($it['relay4_wash']) ? 'реле 4 — омывание · ' : '') . $bat . (isset($it['sim_phone']) ? ' · SIM ' . $it['sim_phone'] : '') . ($off ? ' · отключены реле ' . implode(', ', array_filter([1, 2, 3, 4], fn($i) => ($off >> ($i - 1)) & 1)) : '');
     return $it;
 }
 

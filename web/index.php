@@ -84,7 +84,10 @@ layout_head('Устройства', 'devices', $login);
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60" placeholder="Реле 4"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено</label></div>
-        <label class="check full relay4-lock-field"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери</label>
+        <label class="field full relay4-mode-field">Реле 4<select class="input" name="relay4_mode">
+          <option value="normal">обычное реле</option>
+          <option value="lock">замок двери (вкл — закрыта, выкл — открыта)</option>
+          <option value="wash">омывание (только кнопка «Запуск»)</option></select></label>
         <label class="check full lock-unused-field"><input type="checkbox" name="lock_unused" value="1"> Замок не используется
           <span class="hint">плата ver_5_1 (версия 3): блок «Замок и дверь» не показывается, датчик двери не учитывается</span></label>
         <label class="field">Версия устройства<select class="input" name="hw_version">
@@ -148,10 +151,11 @@ layout_head('Устройства', 'devices', $login);
           <option value="">не менять</option><option value="1">включить</option><option value="0">выключить</option></select></label>
         <label class="field full">Замок платы ver_5_1 (версия 3)<select class="input" name="lock_unused">
           <option value="">не менять</option><option value="0">используется</option><option value="1">не используется — не показывать блок «Замок и дверь»</option></select></label>
-        <label class="field full">Реле 4 — замок двери (версии 1 и 2)<select class="input" name="relay4_lock">
+        <label class="field full">Реле 4<select class="input" name="relay4_mode">
           <option value="">не менять</option>
-          <option value="1">включить: реле 4 управляет замком (вкл — дверь закрыта, выкл — открыта)</option>
-          <option value="0">выключить: реле 4 — обычное реле</option></select></label>
+          <option value="normal">обычное реле</option>
+          <option value="lock">замок двери (версии 1 и 2: вкл — закрыта, выкл — открыта)</option>
+          <option value="wash">омывание (только кнопка «Запуск»)</option></select></label>
       </div>
       <div class="result" id="bulk-result"></div>
     </div>

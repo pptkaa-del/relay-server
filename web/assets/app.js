@@ -176,7 +176,9 @@ const App = (() => {
   /** Реле 4 — замок двери: включено — закрыто, выключено — открыто */
   const LOCK4_CMD = { 1: 'Закрыть', 2: 'Открыть надолго', 3: 'Открыть' };
   const LOCK4_STATE = { 0: 'дверь открыта', 1: 'дверь закрыта', 2: 'ошибка' };
+  /** mode для реле 4: true / 'lock' — замок, 'wash' — омывание */
   function cmdLabel(command, relay, lock4 = false) {
+    if (relay === 4 && lock4 === 'wash') return command === 3 ? 'Омывание: запуск' : 'Омывание: ' + (CMD[command] || command);
     if (relay === 4 && lock4 && LOCK4_CMD[command]) return 'Замок: ' + LOCK4_CMD[command].toLowerCase();
     if (relay === 5) return { 1: 'Замок: подать питание', 2: 'Замок: снять питание', 3: 'Замок: открыть' }[command] || CMD[command];
     return CMD[command] + ([1, 2, 3].includes(command) ? ' · ' + (relay ? 'реле ' + relay : 'все реле') : '');
@@ -273,10 +275,11 @@ const App = (() => {
       form.querySelectorAll('[data-bat-box]').forEach(el => el.classList.toggle('hidden', !on));
       // версия 3 (ver_5_1): свой замок — «реле 4 — замок» недоступно, есть «Замок не используется»
       const v3 = ver === 3;
-      const r4 = form.elements.relay4_lock;
-      if (r4 && r4.type === 'checkbox') {
-        if (v3) r4.checked = false;
-        form.querySelectorAll('.relay4-lock-field').forEach(el => el.classList.toggle('hidden', v3));
+      const r4 = form.elements.relay4_mode; // у версии 3 вариант «замок двери» недоступен
+      if (r4) {
+        const opt = r4.querySelector('option[value="lock"]');
+        if (opt) { opt.disabled = v3; opt.hidden = v3; }
+        if (v3 && r4.value === 'lock') r4.value = 'normal';
       }
       form.querySelectorAll('.lock-unused-field').forEach(el => el.classList.toggle('hidden', !v3));
     };

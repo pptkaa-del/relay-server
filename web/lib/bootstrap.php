@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.33';
+const RELAY_VERSION       = '3.34';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -752,8 +752,23 @@ function relay_relay4_lock(mysqli $db, int $deviceId): bool
 /** Названия команд замку на реле 4: включено — закрыто, выключено — открыто. */
 const RELAY4_LOCK_COMMANDS = [1 => 'Замок: закрыть', 2 => 'Замок: открыть надолго', 3 => 'Замок: открыть'];
 
-function relay_command_label(int $command, int $relay, bool $relay4Lock = false): string
+/** Реле 4 — омывание: доступна только команда «Запуск» (перезапуск реле). */
+function relay_relay4_wash(mysqli $db, int $deviceId): bool
 {
+    static $cache = [];
+    if (!isset($cache[$deviceId]) || time() - $cache[$deviceId][1] > 30) {
+        $res = @relay_q($db, 'SELECT relay4_wash FROM general_info WHERE id = ?', [$deviceId]);
+        $r = $res instanceof mysqli_result ? mysqli_fetch_row($res) : null;
+        $cache[$deviceId] = [$r !== null && (int)$r[0] === 1, time()];
+    }
+    return $cache[$deviceId][0];
+}
+
+function relay_command_label(int $command, int $relay, bool $relay4Lock = false, bool $relay4Wash = false): string
+{
+    if ($relay === 4 && $relay4Wash) {
+        return $command === 3 ? 'Омывание: запуск' : 'Омывание: ' . (RELAY_COMMANDS[$command] ?? "команда $command");
+    }
     if ($relay === 4 && $relay4Lock && isset(RELAY4_LOCK_COMMANDS[$command])) {
         return RELAY4_LOCK_COMMANDS[$command];
     }
@@ -813,7 +828,7 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
     }
     if ($local) {
         // событие пишем до отправки: плата может ответить раньше, чем завершится publish
-        relay_event($db, $deviceId, $command === 5 ? 'reboot' : 'command', 'Команда: ' . relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId)), 'info',
+        relay_event($db, $deviceId, $command === 5 ? 'reboot' : 'command', 'Команда: ' . relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId), relay_relay4_wash($db, $deviceId)), 'info',
             ['cmd_id' => $cmdId, 'command' => $command, 'relay' => $relay], $user);
     }
     // журнал пишем до отправки: сторонний брокер вернёт копию сообщения (подписка на #) раньше,
@@ -826,7 +841,7 @@ function relay_send_command(mysqli $db, int $deviceId, int $command, int $relay,
         relay_q($db, 'DELETE FROM mqtt_messages WHERE id = ?', [$logId]);
         if ($local) {
             relay_q($db, "UPDATE commands SET status = 'error' WHERE cmd_id = ? AND status = 'pending'", [$cmdId]);
-            relay_event($db, $deviceId, 'command', relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId)) . ' — ошибка отправки: ' . $e->getMessage(), 'error', ['cmd_id' => $cmdId], $user);
+            relay_event($db, $deviceId, 'command', relay_command_label($command, $relay, relay_relay4_lock($db, $deviceId), relay_relay4_wash($db, $deviceId)) . ' — ошибка отправки: ' . $e->getMessage(), 'error', ['cmd_id' => $cmdId], $user);
         }
         throw new RuntimeException('Ошибка MQTT: ' . $e->getMessage());
     }

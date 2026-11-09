@@ -140,7 +140,7 @@ foreach ($rows as &$r) {
         $r['retained'] = (bool)$r['retained'];
     }
     if ($kind === 'commands') {
-        $r['label'] = relay_command_label((int)$r['command'], (int)$r['relay_num'], relay_relay4_lock($connect, $id));
+        $r['label'] = relay_command_label((int)$r['command'], (int)$r['relay_num'], relay_relay4_lock($connect, $id), relay_relay4_wash($connect, $id));
     }
 }
 unset($r);

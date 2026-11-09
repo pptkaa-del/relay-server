@@ -109,7 +109,10 @@ layout_head("Устройство #$id", 'devices', $login);
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 4</span><input class="input" name="relay4" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay4_off" value="1"> отключено</label></div>
-        <label class="check full relay4-lock-field"><input type="checkbox" name="relay4_lock" value="1"> Реле 4 управляет замком двери</label>
+        <label class="field full relay4-mode-field">Реле 4<select class="input" name="relay4_mode">
+          <option value="normal">обычное реле</option>
+          <option value="lock">замок двери (вкл — закрыта, выкл — открыта)</option>
+          <option value="wash">омывание (только кнопка «Запуск»)</option></select></label>
         <label class="check full lock-unused-field"><input type="checkbox" name="lock_unused" value="1"> Замок не используется
           <span class="hint">плата ver_5_1 (версия 3): блок «Замок и дверь» не показывается, датчик двери не учитывается</span></label>
         <label class="field">Версия устройства<select class="input" name="hw_version">

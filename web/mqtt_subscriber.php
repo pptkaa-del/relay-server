@@ -187,7 +187,8 @@ function handleStat(array $d, bool $retained): void
             $changes[] = "relay_$i"; $prev[] = $cur[$i]; $new[] = $r[$i];
             $relayText[] = $i === 4 && $lock4
                 ? 'дверь (замок, реле 4): ' . $doorName($cur[$i]) . ' → ' . $doorName($r[$i])
-                : "реле $i: " . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i]);
+                : ($i === 4 && relay_relay4_wash($c, $id) ? 'омывание (реле 4): ' . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i])
+                : "реле $i: " . (STATE_NAMES[$cur[$i]] ?? $cur[$i]) . ' → ' . (STATE_NAMES[$r[$i]] ?? $r[$i]));
         }
     }
     $doorOpened = $lock4 && $cur[4] === 1 && $r[4] === 0;
@@ -247,7 +248,7 @@ function handleRep(array $d): void
     writeLog("REP: устройство $id, cmd_id=$cmdId, " . ($ok ? 'success' : 'error'));
 
     if ($cmd) {
-        $label = relay_command_label((int)$cmd['command'], (int)$cmd['relay_num'], relay_relay4_lock($c, $id));
+        $label = relay_command_label((int)$cmd['command'], (int)$cmd['relay_num'], relay_relay4_lock($c, $id), relay_relay4_wash($c, $id));
         if ((int)$cmd['command'] === 5) {
             relay_event($c, $id, 'reboot', $ok ? 'Устройство приняло команду перезагрузки и перезапускается' : 'Устройство отклонило перезагрузку', $ok ? 'warning' : 'error', ['cmd_id' => $cmdId]);
         } elseif ((int)$cmd['command'] !== 4) {
