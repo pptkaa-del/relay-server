@@ -334,6 +334,25 @@ log "Mosquitto"
 PASSWD=/etc/mosquitto/passwd
 touch "$PASSWD"
 mosquitto_passwd -b "$PASSWD" "$MQTT_USER" "$MQTT_PASS" 2>/dev/null || die "Не удалось записать $PASSWD"
+# дополнительные пользователи MQTT из репозитория (config/mqtt-users.conf: «логин:хэш_mosquitto:rw|read»).
+# Они добавляются к созданным на сервере командой «relay-device mqtt-user-add»; при совпадении логина побеждает репозиторий.
+MQTT_USERS=/etc/relay-server/mqtt-users.conf
+touch "$MQTT_USERS"; chmod 600 "$MQTT_USERS"
+if [ -f "$SRC_DIR/config/mqtt-users.conf" ]; then
+    while IFS=: read -r u hash mode; do   # хэш mosquitto ($7$…) двоеточий не содержит
+        [[ "$u" =~ ^[A-Za-z0-9_.@-]{1,64}$ && "$hash" == \$* ]] || continue
+        [[ "$u" =~ ^relay-[0-9]+$ || "$u" = "$MQTT_USER" ]] && { warn "config/mqtt-users.conf: логин $u занят — пропущен"; continue; }
+        [ "${mode:-rw}" = read ] || mode=rw
+        { grep -v "^$u:" "$MQTT_USERS" || true; echo "$u:$hash:$mode"; } > "$MQTT_USERS.new" && mv "$MQTT_USERS.new" "$MQTT_USERS"
+    done < <(grep -v '^[[:space:]]*\(#\|$\)' "$SRC_DIR/config/mqtt-users.conf")
+    chmod 600 "$MQTT_USERS"
+fi
+# все дополнительные пользователи — в файл паролей брокера (готовым хэшем)
+while IFS=: read -r u rest; do
+    [[ "$u" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]] || continue
+    hash=${rest%:*}
+    { grep -v "^$u:" "$PASSWD" || true; echo "$u:$hash"; } > "$PASSWD.new" && mv "$PASSWD.new" "$PASSWD"
+done < <(grep -v '^[[:space:]]*\(#\|$\)' "$MQTT_USERS")
 chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
 
 TLS_BLOCK=""

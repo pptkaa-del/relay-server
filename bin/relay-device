@@ -8,12 +8,18 @@
 #   sudo relay-device sync-acl                          — пересобрать ACL из файла паролей
 #   sudo relay-device user-add <логин> [пароль]         — добавить/сменить пароль пользователя веб-панели
 #   sudo relay-device user-del <логин>                  — удалить пользователя веб-панели
+#   sudo relay-device mqtt-user-add <логин> [пароль] [rw|read] — дополнительный пользователь брокера MQTT
+#                                                         (rw — чтение и запись всех топиков, read — только чтение)
+#   sudo relay-device mqtt-user-del <логин>             — удалить дополнительного пользователя MQTT
+#   sudo relay-device mqtt-user-list                    — список дополнительных пользователей MQTT
 set -euo pipefail
 
 ENV_FILE=/etc/relay-server/install.env
 PASSWD=/etc/mosquitto/passwd
 ACL=/etc/mosquitto/relay.acl
 USERS=/etc/relay-server/users.php
+# дополнительные пользователи MQTT: «логин:хэш_mosquitto:rw|read» (хэш — как в $PASSWD)
+MQTT_USERS=/etc/relay-server/mqtt-users.conf
 
 [ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo" >&2; exit 1; }
 [ -r "$ENV_FILE" ] || { echo "Не найден $ENV_FILE — сначала выполните install.sh" >&2; exit 1; }
@@ -43,6 +49,17 @@ sync_acl() {
         echo "topic readwrite #"
         echo 'topic read $SYS/broker/log/#'
         echo
+        # дополнительные пользователи (mqtt-user-add или config/mqtt-users.conf из репозитория)
+        if [ -f "$MQTT_USERS" ]; then
+            while IFS=: read -r u _ mode; do
+                [[ "$u" =~ ^[A-Za-z0-9_.@-]+$ ]] || continue
+                if [ "${mode:-rw}" = "read" ]; then
+                    printf 'user %s\ntopic read #\n\n' "$u"
+                else
+                    printf 'user %s\ntopic readwrite #\n\n' "$u"
+                fi
+            done < <(grep -v '^[[:space:]]*\(#\|$\)' "$MQTT_USERS")
+        fi
         # «|| true»: если плат ещё нет, grep ничего не находит, а с pipefail это прервало бы скрипт
         { grep -oE '^relay-[0-9]+:' "$PASSWD" 2>/dev/null || true; } | tr -d ':' | sort -t- -k2 -n | while read -r u; do
             id=${u#relay-}
@@ -109,6 +126,36 @@ case "${1:-}" in
             file_put_contents($f, "<?php\nreturn " . var_export($u, true) . ";\n");' "$USERS"
         chown root:www-data "$USERS"; chmod 640 "$USERS"
         echo "Пользователь панели $login сохранён."
+        ;;
+    mqtt-user-add)
+        login=${2:-}; [[ "$login" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]] || die "логин: латиница, цифры, _ . @ -"
+        [[ "$login" =~ ^relay-[0-9]+$ || "$login" = "$MQTT_USER" ]] && die "логин $login занят платой или сервером"
+        pw=${3:-}
+        mode=${4:-rw}; [[ "$mode" = rw || "$mode" = read ]] || die "права: rw или read"
+        if [ -z "$pw" ]; then read -r -s -p "Пароль MQTT для $login: " pw; echo; fi
+        [ ${#pw} -ge 6 ] || die "пароль короче 6 символов"
+        tmp=$(mktemp); mosquitto_passwd -c -b "$tmp" "$login" "$pw" 2>/dev/null || { rm -f "$tmp"; die "mosquitto_passwd не сработал"; }
+        hash=$(cut -d: -f2- "$tmp"); rm -f "$tmp"
+        touch "$MQTT_USERS"; chmod 600 "$MQTT_USERS"
+        { grep -v "^$login:" "$MQTT_USERS" || true; echo "$login:$hash:$mode"; } > "$MQTT_USERS.new" && mv "$MQTT_USERS.new" "$MQTT_USERS"
+        chmod 600 "$MQTT_USERS"
+        mosquitto_passwd -b "$PASSWD" "$login" "$pw" 2>/dev/null || die "mosquitto_passwd: не удалось записать $PASSWD"
+        chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
+        sync_acl; reload_mosquitto
+        echo "Пользователь MQTT $login сохранён ($([ "$mode" = read ] && echo 'только чтение' || echo 'чтение и запись'))."
+        ;;
+    mqtt-user-del)
+        login=${2:-}; [[ "$login" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]] || die "укажите логин"
+        [ -f "$MQTT_USERS" ] && { grep -v "^$login:" "$MQTT_USERS" > "$MQTT_USERS.new" || true; mv "$MQTT_USERS.new" "$MQTT_USERS"; chmod 600 "$MQTT_USERS"; }
+        mosquitto_passwd -D "$PASSWD" "$login" 2>/dev/null || true
+        sync_acl; reload_mosquitto
+        echo "Пользователь MQTT $login удалён."
+        ;;
+    mqtt-user-list)
+        [ -s "$MQTT_USERS" ] || { echo "Дополнительных пользователей MQTT нет."; exit 0; }
+        grep -v '^[[:space:]]*\(#\|$\)' "$MQTT_USERS" | while IFS=: read -r u _ mode; do
+            echo "$u — $([ "${mode:-rw}" = read ] && echo 'только чтение' || echo 'чтение и запись')"
+        done
         ;;
     user-del)
         RELAY_LOGIN="${2:-}" php -r '

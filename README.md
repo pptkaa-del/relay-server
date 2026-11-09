@@ -348,6 +348,20 @@ systemctl restart relay-mqtt-subscriber mosquitto
 Расположение файлов: панель — `/var/www/relay`, настройки — `/etc/relay-server/`,
 брокер — `/etc/mosquitto/conf.d/relay-server.conf`, ACL — `/etc/mosquitto/relay.acl`.
 
+## Дополнительные пользователи MQTT
+
+Кроме плат и самого сервера к брокеру можно подключать своих пользователей (мониторинг, сторонние системы):
+
+```bash
+sudo relay-device mqtt-user-add monitor 'Пароль' rw     # rw — чтение и запись всех топиков, read — только чтение
+sudo relay-device mqtt-user-list
+sudo relay-device mqtt-user-del monitor
+```
+
+Пользователей можно задать и в репозитории — файлом `config/mqtt-users.conf` в ветке конкретного сервера
+(формат — в `config/mqtt-users.conf.example`; в файле хранится хэш пароля, а не сам пароль). Установщик и `relay-update`
+добавляют их в брокер автоматически.
+
 ## Резервные копии
 
 Раздел «Копии» (только администратор):
