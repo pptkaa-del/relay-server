@@ -22,7 +22,7 @@ layout_head('Пользователи', 'users', $login);
 <section class="card">
   <div class="table-wrap">
     <table class="tbl users-tbl">
-      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Реле</th><th title="Нажатия «Перезапуск реле»; «Открыть» замку не считается">Перезапуски реле</th><th title="Нажатия «Перезагрузить устройство»">Перезагрузки устройств</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
+      <thead><tr><th>Логин</th><th>Имя</th><th>Роль</th><th>Устройства</th><th title="Нажатия «Перезапуск реле»; «Открыть» замку не считается">Перезапуски реле</th><th title="Нажатия «Перезагрузить устройство»">Перезагрузки устройств</th><th>Доступ</th><th>Последний вход</th><th></th></tr></thead>
       <tbody id="users"><tr><td colspan="9" class="muted">Загрузка…</td></tr></tbody>
     </table>
   </div>
@@ -34,8 +34,8 @@ layout_head('Пользователи', 'users', $login);
     <dl class="kv">
       <dt><span class="badge info">Администратор</span></dt><dd>всё: добавляет устройства и вносит их данные (названия, подписи реле, АКБ, замок),
         монитор, переадресация MQTT, наклейки, пользователи</dd>
-      <dt><span class="badge success">Пользователь</span></dt><dd>видит только выданные ему реле; каждым реле — «просмотр» (видит состояние)
-        или «управление» (может включать и выключать). Перезагрузка устройства — если есть управление хотя бы одним его реле</dd>
+      <dt><span class="badge success">Пользователь</span></dt><dd>видит только выданные ему устройства: «просмотр» — видит состояние реле,
+        «управление» — может включать, выключать и перезагружать устройство</dd>
     </dl>
     <p class="muted" style="margin:12px 0 0;font-size:13px">Пользователи с отметкой «создан при установке» хранятся на сервере и всегда администраторы.
       Их пароль меняется командой <span class="mono">sudo relay-device user-add ЛОГИН</span>.</p>
@@ -61,15 +61,23 @@ layout_head('Пользователи', 'users', $login);
         </div>
       </div>
       <fieldset class="fieldset" id="perm-box">
-        <legend>Доступ к реле</legend>
+        <legend>Доступ к устройствам</legend>
+        <div class="perm-ids">
+          <label class="field grow">Номера устройств<input class="input mono" id="perm-ids" autocomplete="off" placeholder="например: 1, 3, 5-10"></label>
+          <label class="field">Доступ<select class="input" id="perm-ids-mode">
+            <option value="control">Управление</option><option value="view">Просмотр</option><option value="">Нет</option></select></label>
+          <button class="btn" type="button" id="perm-ids-apply">Применить</button>
+        </div>
+        <div class="hint" id="perm-ids-note">через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</div>
         <div class="perm-tools">
           <span class="perm-summary" id="perm-summary"></span><span style="flex:1"></span>
-          <span class="muted" style="font-size:12.5px">Всем реле:</span>
+          <span class="muted" style="font-size:12.5px">Всем устройствам:</span>
           <button class="btn sm" type="button" data-all-perm="">Нет</button>
           <button class="btn sm" type="button" data-all-perm="view">Просмотр</button>
           <button class="btn sm" type="button" data-all-perm="control">Управление</button>
         </div>
         <div class="perm-list" id="perm-list"></div>
+        <p class="hint" style="margin:0">«Управление» — видит все реле устройства и может ими управлять, «Просмотр» — только видит.</p>
       </fieldset>
       <div class="result" id="user-result"></div>
     </div>

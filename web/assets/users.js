@@ -5,14 +5,16 @@
   const ROLE_BADGE = { admin: 'info', user: 'success' };
   let users = [], roles = {}, me = '', minPass = 6, devices = [], editing = null;
 
-  /** «3 реле на 2 устройствах (управление 2)» */
+  /** Доступ к устройству по правам на его реле: управление — если хоть одним реле управляет, иначе просмотр */
+  const devMode = relays => { const v = Object.values(relays || {}); return v.includes('control') ? 'control' : v.length ? 'view' : ''; };
+  /** «5 устр. · управление 3» */
   function permSummary(perms) {
-    let total = 0, ctl = 0, devs = 0;
+    let total = 0, ctl = 0;
     for (const relays of Object.values(perms || {})) {
-      const v = Object.values(relays); if (!v.length) continue;
-      devs++; total += v.length; ctl += v.filter(m => m === 'control').length;
+      const m = devMode(relays); if (!m) continue;
+      total++; if (m === 'control') ctl++;
     }
-    return total ? `${total} реле на ${devs} устр. · управление ${ctl}` : 'нет доступа';
+    return total ? `${total} устр. · управление ${ctl}` : 'нет доступа';
   }
 
   function render() {
@@ -35,43 +37,63 @@
     render();
   }
 
-  /* ---------- Права на реле ---------- */
+  /* ---------- Доступ к устройствам (права хранятся по реле: выбор применяется ко всем реле устройства) ---------- */
   const MODES = [['', 'Нет'], ['view', 'Просмотр'], ['control', 'Управление']];
   function renderPerms(perms) {
-    $('#perm-list').innerHTML = devices.length ? devices.map(d => `<div class="perm-dev" data-dev="${d.id}">
-        <div class="perm-dev-head"><b title="${esc(d.name)}">${esc(d.name)}</b><span class="mono muted">#${d.id}</span>
-          <select class="input perm-dev-all" data-dev-all="${d.id}" title="Все реле устройства" style="width:auto;height:30px;font-size:12.5px">
-            <option value="">— все реле —</option>${MODES.map(([v, t]) => `<option value="${v}:">${t}</option>`).join('')}</select></div>
-        <div class="perm-relays">${d.relays.map(r => {
-          const cur = perms?.[d.id]?.[r.num] || '';
-          return `<label class="perm-relay"><span title="${esc(r.name)}${r.off ? ' — реле отключено в настройках устройства' : ''}" class="${r.off ? 'muted' : ''}">${r.lock ? '🔒 ' : ''}${esc(r.name)}${r.off ? ' (откл.)' : ''}</span>
-            <select class="input" data-perm="${d.id}:${r.num}">${MODES.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
-        }).join('')}</div></div>`).join('')
-      : '<div class="empty" style="padding:20px">Устройств пока нет — сначала добавьте устройство на главной странице.</div>';
+    $('#perm-ids').value = ''; $('#perm-ids-note').className = 'hint';
+    $('#perm-ids-note').textContent = 'через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10';
+    $('#perm-list').innerHTML = devices.length ? devices.map(d => {
+      const cur = devMode(perms?.[d.id]);
+      return `<label class="perm-dev-row"><span class="perm-dev-name" title="${esc(d.name)}">${esc(d.name)}</span><span class="mono muted">#${d.id}</span>
+        <select class="input" data-dev="${d.id}">${MODES.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+    }).join('') : '<div class="empty" style="padding:20px">Устройств пока нет — сначала добавьте устройство на главной странице.</div>';
     updSummary();
   }
+  /** {устройство: {реле: режим}} — режим устройства на все его реле (1–4 и замок платы ver_5_1) */
   function collectPerms() {
     const out = {};
-    $$('[data-perm]').forEach(sel => {
+    $$('[data-dev]').forEach(sel => {
       if (!sel.value) return;
-      const [dev, num] = sel.dataset.perm.split(':');
-      (out[dev] = out[dev] || {})[num] = sel.value;
+      const d = devices.find(x => x.id === +sel.dataset.dev); if (!d) return;
+      out[d.id] = Object.fromEntries(d.relays.map(r => [r.num, sel.value]));
     });
     return out;
   }
   const updSummary = () => { $('#perm-summary').textContent = permSummary(collectPerms()); };
-  $('#perm-list').addEventListener('change', e => {
-    const all = e.target.closest('[data-dev-all]');
-    if (all && all.value) {
-      const mode = all.value.replace(':', '');
-      $$(`[data-perm^="${all.dataset.devAll}:"]`).forEach(s => { s.value = mode; });
-      all.value = '';
-    }
-    updSummary();
-  });
+  $('#perm-list').addEventListener('change', updSummary);
   $$('[data-all-perm]').forEach(b => b.addEventListener('click', () => {
-    $$('[data-perm]').forEach(s => { s.value = b.dataset.allPerm; }); updSummary();
+    $$('[data-dev]').forEach(s => { s.value = b.dataset.allPerm; }); updSummary();
   }));
+  /** «1, 3, 5-10» → номера (как на сервере) или текст ошибки */
+  function parseIds(s) {
+    const out = new Set();
+    for (const part of s.replace(/\s*[-–—]\s*/g, '-').split(/[\s,;]+/).filter(Boolean)) {
+      const m = /^(\d{1,10})(?:-(\d{1,10}))?$/.exec(part);
+      if (!m) return `неверный номер «${part}»`;
+      let a = +m[1], b = m[2] ? +m[2] : a;
+      if (b < a) [a, b] = [b, a];
+      if (b - a >= 500) return 'не больше 500 устройств за раз';
+      for (let i = a; i <= b; i++) out.add(i);
+    }
+    return [...out];
+  }
+  function applyIds() {
+    const note = $('#perm-ids-note'), v = $('#perm-ids').value.trim();
+    if (!v) return;
+    const ids = parseIds(v);
+    if (typeof ids === 'string') { note.className = 'hint bad-text'; note.textContent = ids; return; }
+    const mode = $('#perm-ids-mode').value, done = [], missing = [];
+    for (const id of ids) {
+      const sel = $(`[data-dev="${id}"]`);
+      if (sel) { sel.value = mode; done.push(id); } else missing.push(id);
+    }
+    note.className = 'hint';
+    note.textContent = `«${MODES.find(m => m[0] === mode)[1]}» — устройств: ${done.length}`
+      + (missing.length ? `; нет в панели: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? ' …' : ''}` : '');
+    updSummary();
+  }
+  $('#perm-ids-apply').addEventListener('click', applyIds);
+  $('#perm-ids').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyIds(); } });
 
   /* ---------- Нажатия «Перезапуск реле» и «Перезагрузить устройство» ---------- */
   function clickCell(u, key) {

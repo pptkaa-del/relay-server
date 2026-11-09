@@ -522,3 +522,12 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
 .bulk-preview { font-size: 13px; color: var(--text-2); min-height: 18px; }
 .bad-text { color: var(--bad); }
 .link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+
+/* доступ пользователя к устройствам: номера вручную + одна строка на устройство */
+.perm-ids { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.perm-ids .field.grow { flex: 1 1 220px; }
+.perm-ids select.input { width: auto; }
+.perm-dev-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; cursor: default; }
+.perm-dev-row:last-child { border-bottom: 0; }
+.perm-dev-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.perm-dev-row select.input { width: auto; height: 32px; padding: 0 8px; font-size: 13px; }
