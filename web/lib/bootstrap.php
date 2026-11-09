@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.24';
+const RELAY_VERSION       = '3.25';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)

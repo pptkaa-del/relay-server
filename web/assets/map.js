@@ -45,17 +45,16 @@
     const bi = d.break_in ? `<div class="map-alarm">ВЗЛОМ ДВЕРИ · ${ago(d.break_in.ts)}</div>` : '';
     return `<div class="map-pop"><b>${esc(d.name)}</b> <span class="muted">#${d.id}</span>${bi}
       <div>${esc(text)}</div>${d.address ? `<div class="muted">${esc(d.address)}</div>` : ''}
+      ${d.geo_auto ? `<div class="muted">координаты не заданы — условная точка ${d.geo.join(', ')}</div>` : ''}
       <div class="muted">данные: ${ago(d.last_data_ts)}</div>
       <a href="#${d.id}" class="map-open">Открыть устройство →</a></div>`;
   }
 
   function update(list, selected) {
     const geo = list.filter(d => d.geo);
-    const without = list.length - geo.length;
     const note = $('#map-note');
-    note.textContent = !list.length ? '' : !geo.length
-      ? 'Ни у одного устройства не указаны координаты. Администратор задаёт их в «Изменить» → «Координаты», например 55.7558, 37.6173.'
-      : without ? `Без координат: ${without} — они не показаны на карте.` : '';
+    const auto = geo.filter(d => d.geo_auto).length;
+    note.textContent = auto ? `Без координат: ${auto} — показаны в условных точках «55.ID, 37.ID». Настоящие координаты задаются в «Изменить» → «Координаты».` : '';
     $('#map').classList.toggle('hidden', !geo.length);
     if (!geo.length || card.classList.contains('hidden')) { shown = false; return; }
     ensureMap();
