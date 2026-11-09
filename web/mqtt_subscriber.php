@@ -267,9 +267,30 @@ function handleRep(array $d): void
 }
 
 /** Платы без stat дольше RELAY_OFFLINE_AFTER → оффлайн (одно событие на каждый обрыв). */
+/** @var array<int, true> устройства панели, которых брокер не пускает, — восстановить учётную запись */
+$healQueue = [];
+/** @var array<int, int> когда последний раз пытались восстановить (не чаще раза в 10 минут) */
+$healedAt = [];
+
 function checkTimeouts(): void
 {
+    global $healQueue;
     $c = db();
+    // учётные записи MQTT устройств панели, которых брокер не пускал, — одной командой
+    if ($healQueue) {
+        $ids = array_keys($healQueue);
+        $healQueue = [];
+        foreach (array_chunk($ids, 200) as $chunk) {
+            [$code, $out] = relay_device_cli(['add-many', implode(',', $chunk)]);
+            foreach ($chunk as $hid) {
+                $code === 0
+                    ? relay_event($c, $hid, 'info', 'Брокер не пускал устройство: учётная запись MQTT восстановлена автоматически', 'warning')
+                    : relay_event($c, $hid, 'info', 'Брокер не пускает устройство (not authorised), восстановить учётную запись не удалось: '
+                        . mb_substr($out, 0, 200) . '. Выполните: sudo relay-device add ' . $hid, 'error');
+            }
+            writeLog('MQTT: восстановление учётных записей (' . implode(',', $chunk) . '): ' . ($code === 0 ? 'готово' : $out), $code === 0 ? 'INFO' : 'ERROR');
+        }
+    }
     // истёк срок «не принимать сообщения» — возвращаем устройству доступ к брокеру
     foreach (relay_rows(@relay_q($c, 'SELECT id FROM general_info WHERE mqtt_block_at IS NOT NULL
                                         AND mqtt_block_until IS NOT NULL AND mqtt_block_until <= NOW()') ?: null) as $b) {
@@ -333,12 +354,14 @@ function handleBrokerLog(string $line): void
     }
     $known = relay_q($c, 'SELECT 1 FROM general_info WHERE id = ?', [$id]);
     if ($known && mysqli_num_rows($known) > 0) {
-        // плата есть в панели, но брокер её не пускает — скорее всего, нет учётной записи MQTT
-        static $warned = [];
-        if (!isset($warned[$id]) || time() - $warned[$id] > 3600) {
-            $warned[$id] = time();
-            relay_event($c, $id, 'info', 'Брокер не пускает устройство (not authorised). Проверьте ID в устройстве или выполните: sudo relay-device add ' . $id, 'error');
+        // устройство есть в панели, но брокер его не пускает — нет учётной записи MQTT: восстанавливаем
+        // (не чаще раза в 10 минут на устройство)
+        global $healQueue, $healedAt;
+        if (!isset($healedAt[$id]) || time() - $healedAt[$id] > 600) {
+            $healedAt[$id] = time();
+            $healQueue[$id] = true; // восстановим пачкой в checkTimeouts — не задерживаем обработку сообщений
         }
+        return; // устройство зарегистрировано — в «незарегистрированные» не добавляем
     }
     relay_q($c, 'INSERT INTO pending_devices (id, client_id, ip, attempts, first_seen, last_seen) VALUES (?, ?, ?, 1, NOW(), NOW())
                  ON DUPLICATE KEY UPDATE client_id = VALUES(client_id), ip = COALESCE(VALUES(ip), ip),

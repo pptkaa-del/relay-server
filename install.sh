@@ -416,6 +416,8 @@ if command -v ss >/dev/null && ss -ltnH "sport = :$MQTT_PORT" | grep -q .; then
     die "Порт $MQTT_PORT занят другим процессом (см. выше). Остановите его и запустите install.sh снова."
 fi
 relay-device sync-acl >/dev/null || die "Не удалось создать /etc/mosquitto/relay.acl"
+# у каждого устройства панели должна быть учётная запись в брокере (например, после загрузки из старой БД)
+relay-device sync-accounts || warn "Не удалось проверить учётные записи MQTT устройств: sudo relay-device sync-accounts"
 [ -s /etc/mosquitto/relay.acl ] || die "Файл /etc/mosquitto/relay.acl не создан"
 
 # ----------------------------------------------------------------------------

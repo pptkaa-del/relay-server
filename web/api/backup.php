@@ -323,8 +323,14 @@ switch ($action) {
             }
             $isNew ? $created[] = $id : $updated[] = $id;
         }
-        // учётные записи MQTT новых устройств: одна команда на порцию (ACL и перечитывание брокера — один раз)
-        foreach (array_chunk($created, 200) as $chunk) {
+        // учётные записи MQTT всех загруженных устройств (и уже бывших в панели — у них учётной записи могло не быть):
+        // одна команда на порцию, ACL и перечитывание брокера — один раз; существующие записи не меняются по сути
+        $blocked = [];
+        foreach (relay_rows(@mysqli_query($connect, 'SELECT id FROM general_info WHERE mqtt_block_at IS NOT NULL') ?: null) as $b) {
+            $blocked[(int)$b['id']] = true;
+        }
+        $toRegister = array_values(array_filter(array_merge($created, $updated), fn($x) => !isset($blocked[$x])));
+        foreach (array_chunk($toRegister, 200) as $chunk) {
             [$code, $out] = relay_device_cli(['add-many', implode(',', $chunk)]);
             if ($code !== 0) {
                 array_push($noMqtt, ...$chunk);
