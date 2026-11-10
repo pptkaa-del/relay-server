@@ -105,7 +105,7 @@ layout_head('Устройства', 'devices', $login);
           <span class="hint">выключите, если АКБ не подключён; у версии 1 контроля АКБ нет</span></label>
         <fieldset class="fieldset" data-bat-box>
           <legend>АКБ и калибровка напряжения (необязательно)</legend>
-          <label class="field">Тип АКБ<select class="input" name="bat_type"><option value="12">12 В</option><option value="24">24 В</option></select></label>
+          <label class="field">Тип АКБ<select class="input" name="bat_type"><option value="12">12 В</option><option value="24" selected>24 В</option></select></label>
           <p class="hint">Подайте на вход АКБ устройства <span data-bat-low>6</span> В и <span data-bat-high>15</span> В от лабораторного источника и запишите показания АЦП —
             их видно на странице устройства и в мониторе (поле «АЦП АКБ» пакета stat). Калибровку можно задать и позже.</p>
           <div class="form-grid">

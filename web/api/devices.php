@@ -100,7 +100,7 @@ function parse_coords(string $s): ?array
 /** Тип АКБ и калибровка из формы → [bat_type, столбец_low => АЦП, столбец_high => АЦП] */
 function bat_from_post(): array
 {
-    $type = relay_bat_type($_POST['bat_type'] ?? 12);
+    $type = relay_bat_type($_POST['bat_type'] ?? 24); // по умолчанию АКБ 24 В
     $t = RELAY_BAT_TYPES[$type];
     try {
         $lo = relay_cal_value($_POST['cal_low'] ?? '');
