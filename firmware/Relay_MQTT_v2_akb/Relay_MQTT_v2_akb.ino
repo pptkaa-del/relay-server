@@ -1,9 +1,20 @@
 // =============================================================================
-//  Релейный блок ESP8266 (WeMos D1 mini) + SIM800L — прошивка MQTT v2.3
+//  Релейный блок ESP8266 (WeMos D1 mini) + SIM800L — прошивка MQTT v2.4
 //  Протокол обмена с сервером: docs/PROTOCOL.md (версия протокола 2)
 //
 //  Библиотеки: PubSubClient 2.8+, TinyGSM 0.12+, PCF8574_library 2.4+ (Renzo Mischianti),
 //              Crypto 0.4+ (Rhys Weatherley). Плата: «LOLIN(WEMOS) D1 R2 & mini».
+//
+//  v2.4 — модем SIM800L:
+//   * скорость связи с модемом определяется автоматически (4800…115200), рабочая скорость
+//     задаётся в меню (пункт 0) и сохраняется в модеме (AT+IPR, AT&W);
+//   * ошибки и события модема выводятся в монитор порта с пояснением: ошибки AT-команд (+CME ERROR),
+//     низкое/высокое напряжение, самопроизвольная перезагрузка модема, потеря SIM, разрыв GPRS;
+//     при неудачах — отчёт о состоянии модема (сигнал, сеть, оператор, напряжение, GPRS);
+//     полный журнал AT-команд — MODEM_AT_LOG 1;
+//   * быстрее выход на связь: модем не перезагружается при первом запуске (он уже ищет сеть
+//     с момента включения питания), вместо фиксированных пауз — опрос готовности SIM и сети,
+//     отказ оператора в регистрации прерывает ожидание сразу; время выхода на связь выводится.
 //
 //  v2.3 — исправления и оптимизация:
 //   * адрес сервера MQTT, порт и APN задаются в меню настройки (пункты 5–7) и хранятся в EEPROM;
@@ -32,7 +43,7 @@
 #include <EEPROM.h>
 #include <SoftwareSerial.h>
 
-#define FW_VERSION "2.3"
+#define FW_VERSION "2.4"
 
 // =============================================================================
 //  ЗАВОДСКИЕ НАСТРОЙКИ — начальные значения параметров меню настройки.
@@ -48,6 +59,10 @@
 #define DEFAULT_SERVER_HOST   "185.209.29.25"  // пункт 5: адрес сервера MQTT, домен или IP
 #define DEFAULT_SERVER_PORT   1883             // пункт 6: порт сервера MQTT
 #define DEFAULT_APN           ""               // пункт 7: APN оператора, "" — по умолчанию SIM-карты
+#define DEFAULT_MODEM_BAUD    9600             // пункт 0: скорость связи с модемом: 4800, 9600, 19200, 38400, 57600, 115200
+
+// Журнал обмена с модемом в мониторе порта: 0 — только ошибки и события модема, 1 — все AT-команды и ответы
+#define MODEM_AT_LOG 0
 
 // 0 — при перепрошивке настройки платы из EEPROM сохраняются (обычное обновление прошивки);
 // 1 — после прошивки ЭТОЙ сборки плата один раз применит значения выше, даже если уже была настроена
@@ -60,6 +75,8 @@ static_assert(DEFAULT_ALARM_RELAY >= 1 && DEFAULT_ALARM_RELAY <= 4, "DEFAULT_ALA
 static_assert(sizeof(DEFAULT_SERVER_HOST) > 1 && sizeof(DEFAULT_SERVER_HOST) <= 64, "DEFAULT_SERVER_HOST: 1..63 символа");
 static_assert(DEFAULT_SERVER_PORT >= 1 && DEFAULT_SERVER_PORT <= 65535, "DEFAULT_SERVER_PORT: 1..65535");
 static_assert(sizeof(DEFAULT_APN) <= 32, "DEFAULT_APN: до 31 символа");
+static_assert(DEFAULT_MODEM_BAUD == 4800 || DEFAULT_MODEM_BAUD == 9600 || DEFAULT_MODEM_BAUD == 19200 || DEFAULT_MODEM_BAUD == 38400
+              || DEFAULT_MODEM_BAUD == 57600 || DEFAULT_MODEM_BAUD == 115200, "DEFAULT_MODEM_BAUD: 4800, 9600, 19200, 38400, 57600 или 115200");
 
 SoftwareSerial GSMport(D3, D4);
 PCF8574 pcf8574(0x20);
@@ -98,6 +115,8 @@ struct settings_t {
   uint16_t server_port;
   char apn[32];                          // APN оператора (пусто — по умолчанию SIM-карты)
   uint32_t build_stamp;                  // отпечаток сборки, к которой применялись заводские настройки
+  // --- v2.4 ---
+  uint32_t modem_baud;                   // скорость связи с модемом (неверное значение → DEFAULT_MODEM_BAUD)
 };
 settings_t settings;
 
@@ -130,7 +149,125 @@ struct rep_t {
 
 const uint32_t PROTOCOL_VERSION = 2;
 
-TinyGsm modem(GSMport);
+// ====================== ЖУРНАЛ МОДЕМА ======================
+// Прослойка между TinyGSM и портом модема: видит все команды и ответы, выводит ошибки и события SIM800L.
+struct ModemEvents {
+  uint32_t errors, underVoltage, overVoltage, powerDown, restarts, simLost, gprsLost;
+} modemEv = {0, 0, 0, 0, 0, 0, 0};
+bool modemReady = false;        // модем уже отвечал: «RDY» после этого — самопроизвольная перезагрузка
+char modemLastCpin[32] = "";    // последний ответ «+CPIN: …» (причина, если SIM не готова)
+
+const char* modemHint(const char* cmd) {
+  if (!strncmp(cmd, "AT+CPIN", 7)) return "SIM-карта: нет карты, нет контакта или неверный PIN";
+  if (!strncmp(cmd, "AT+CSTT", 7)) return "GPRS: модем не принял APN";
+  if (!strncmp(cmd, "AT+CIICR", 8)) return "GPRS не поднялся: неверный APN, нет денег / интернета на SIM, слабый сигнал";
+  if (!strncmp(cmd, "AT+CIFSR", 8)) return "GPRS: оператор не выдал IP-адрес";
+  if (!strncmp(cmd, "AT+CGATT", 8)) return "GPRS: модем не подключается к пакетной сети (нет 2G-интернета у оператора?)";
+  if (!strncmp(cmd, "AT+SAPBR", 8)) return "GPRS: не открылся канал (APN, баланс)";
+  if (!strncmp(cmd, "AT+CIPSTART", 11)) return "нет соединения с сервером: адрес/порт, сервер выключен, DNS не разрешил имя";
+  if (!strncmp(cmd, "AT+CIPSEND", 10)) return "соединение с сервером разорвано при отправке";
+  if (!strncmp(cmd, "AT+CDNSCFG", 10)) return "модем не принял DNS-серверы";
+  return nullptr;
+}
+
+class ModemStream : public Stream {
+ public:
+  explicit ModemStream(Stream& s) : port(s) {}
+  int available() override { return port.available(); }
+  int peek() override { return port.peek(); }
+  void flush() override { port.flush(); }
+  int read() override {
+    int c = port.read();
+    if (c >= 0) rx((char)c);
+    return c;
+  }
+  size_t write(uint8_t c) override {
+    tx((char)c);
+    return port.write(c);
+  }
+  size_t write(const uint8_t* b, size_t n) override {
+    for (size_t i = 0; i < n; i++) tx((char)b[i]);
+    return port.write(b, n);
+  }
+  using Stream::write;
+
+ private:
+  Stream& port;
+  char line[120];
+  size_t lineLen = 0;
+  char txBuf[64];
+  size_t txLen = 0;
+  char cmd[64] = "";
+
+  void tx(char c) {
+    if (c == '\r' || c == '\n') {
+      txBuf[txLen] = 0;
+      if (txLen >= 2 && (txBuf[0] == 'A' || txBuf[0] == 'a') && (txBuf[1] == 'T' || txBuf[1] == 't')) {
+        memcpy(cmd, txBuf, txLen + 1);
+        if (MODEM_AT_LOG) Serial.printf("  >> %s\n", cmd);
+      }
+      txLen = 0;
+    } else if (txLen < sizeof(txBuf) - 1) {
+      txBuf[txLen++] = c;
+    }
+  }
+  void rx(char c) {
+    if (c == '\r') return;
+    if (c != '\n') {
+      if (lineLen < sizeof(line) - 1) line[lineLen++] = (c >= 0x20 && c < 0x7F) ? c : '.';
+      return;
+    }
+    if (!lineLen) return;
+    line[lineLen] = 0;
+    lineLen = 0;
+    onLine(line);
+  }
+  void onLine(const char* l) {
+    if (MODEM_AT_LOG) Serial.printf("  << %s\n", l);
+    if (!strncmp(l, "+CPIN:", 6) || strstr(l, "SIM not inserted") || strstr(l, "SIM failure")) {
+      strncpy(modemLastCpin, l, sizeof(modemLastCpin) - 1);
+      modemLastCpin[sizeof(modemLastCpin) - 1] = 0;
+    }
+    if (strstr(l, "UNDER-VOLTAGE")) {
+      modemEv.underVoltage++;
+      Serial.printf("SIM800L: НИЗКОЕ НАПРЯЖЕНИЕ ПИТАНИЯ (%s) — нужно 3.8–4.2 В, источник 2 А, конденсатор у модема\n", l);
+    } else if (strstr(l, "OVER-VOLTAGE")) {
+      modemEv.overVoltage++;
+      Serial.printf("SIM800L: ВЫСОКОЕ НАПРЯЖЕНИЕ ПИТАНИЯ (%s) — больше 4.4 В опасно для модема\n", l);
+    } else if (strstr(l, "POWER DOWN")) {
+      modemEv.powerDown++;
+      Serial.printf("SIM800L: модем ВЫКЛЮЧИЛСЯ (%s)\n", l);
+    } else if (!strcmp(l, "RDY")) {
+      if (modemReady) {
+        modemEv.restarts++;
+        Serial.println("SIM800L: модем ПЕРЕЗАГРУЗИЛСЯ сам (RDY) — обычно из-за просадки питания при передаче");
+      }
+    } else if (!strcmp(l, "+CPIN: NOT INSERTED") || (modemReady && !strcmp(l, "+CPIN: NOT READY"))) {
+      modemEv.simLost++;
+      Serial.printf("SIM800L: SIM-карта не видна (%s) — проверьте карту и держатель\n", l);
+    } else if (strstr(l, "+PDP: DEACT")) {
+      modemEv.gprsLost++;
+      Serial.println("SIM800L: оператор разорвал GPRS-сессию (+PDP: DEACT)");
+    } else if (strstr(l, "+CME ERROR") || strstr(l, "+CMS ERROR") || !strcmp(l, "ERROR")) {
+      modemEv.errors++;
+      // одна и та же ошибка при повторных опросах (например, AT+CPIN? раз в секунду) — не чаще раза в 10 с
+      static char lastErr[96] = "";
+      static unsigned long lastErrAt = 0;
+      char key[96];
+      snprintf(key, sizeof(key), "%s|%s", cmd, l);
+      if (!strcmp(key, lastErr) && millis() - lastErrAt < 10000) return;
+      strcpy(lastErr, key);
+      lastErrAt = millis();
+      const char* h = modemHint(cmd);
+      Serial.printf("SIM800L ОШИБКА: %s → %s%s%s\n", cmd[0] ? cmd : "(команда неизвестна)", l, h ? " — " : "", h ? h : "");
+    }
+  }
+};
+ModemStream modemStream(GSMport);
+
+bool simAbsent() { return strstr(modemLastCpin, "NOT INSERTED") || strstr(modemLastCpin, "not inserted"); }
+
+TinyGsm modem(modemStream);
 TinyGsmClient gsmClient(modem);
 PubSubClient mqtt(gsmClient);
 
@@ -261,6 +398,10 @@ bool isValidHost(const char* h) {
   return true;
 }
 
+bool isValidBaud(uint32_t b) {
+  return b == 4800 || b == 9600 || b == 19200 || b == 38400 || b == 57600 || b == 115200;
+}
+
 bool isPrintableField(const char* s, size_t size) {
   size_t n = strnlen(s, size);
   if (n >= size) return false;  // нет завершающего нуля
@@ -305,6 +446,7 @@ void applyFactoryDefaults() {
   settings.server_port = DEFAULT_SERVER_PORT;
   strncpy(settings.apn, DEFAULT_APN, sizeof(settings.apn) - 1);
   settings.build_stamp = buildStamp();
+  settings.modem_baud = DEFAULT_MODEM_BAUD;
 }
 
 void loadSettings() {
@@ -335,13 +477,18 @@ void loadSettings() {
     memset(settings.apn, 0, sizeof(settings.apn));
     strncpy(settings.apn, DEFAULT_APN, sizeof(settings.apn) - 1);
     settings.build_stamp = buildStamp();
+    settings.modem_baud = DEFAULT_MODEM_BAUD;
     saveSettings();
     Serial.println("Настройки сервера по умолчанию: " + String(settings.server_host) + ":" + String(settings.server_port));
   }
+  if (!isValidBaud(settings.modem_baud)) {  // обновление с v2.3: поля скорости ещё нет
+    settings.modem_baud = DEFAULT_MODEM_BAUD;
+    saveSettings();
+  }
   applySettings();
-  Serial.printf("EEPROM прочитан → id=%u, PIN=%s, ошибок PIN: %u/%u, реле питания: %u, сервер %s:%u, APN \"%s\"\n",
+  Serial.printf("EEPROM прочитан → id=%u, PIN=%s, ошибок PIN: %u/%u, реле питания: %u, сервер %s:%u, APN \"%s\", модем %u бод\n",
                 settings.id_i, settings.pin_sim, settings.current_pin_failed_attempts, settings.global_pin_failed_attempts,
-                settings.bat_alarm_relay + 1, settings.server_host, settings.server_port, settings.apn);
+                settings.bat_alarm_relay + 1, settings.server_host, settings.server_port, settings.apn, settings.modem_baud);
 }
 
 // Полный сброс: вся EEPROM заполняется 0xFF (как чистая), затем записываются заводские настройки
@@ -397,6 +544,7 @@ bool readConfirmed(const char* prompt, String& out) {
 
 void printMenu() {
   Serial.println();
+  Serial.println("0 - Скорость связи с модемом (текущее: " + String(settings.modem_baud) + " бод)");
   Serial.println("1 - ID (текущее: " + idStr + ")");
   Serial.println("2 - PIN SIM (текущее: " + String(settings.pin_sim) + "), [ошибок ввода этого PIN: " + String(settings.current_pin_failed_attempts) + "]");
   Serial.println("3 - Сброс глобального счётчика ошибок ввода PIN (текущее: " + String(settings.global_pin_failed_attempts) + ")");
@@ -427,7 +575,19 @@ void enterSetupMode() {
     char choice = line[0];
     String v;
 
-    if (choice == '1') {
+    if (choice == '0') {
+      if (readConfirmed("Скорость связи с модемом: 4800, 9600, 19200, 38400, 57600 или 115200 (обычно 9600): ", v)) {
+        uint32_t b = isDigits(v) && v.length() <= 6 ? (uint32_t)v.toInt() : 0;
+        if (isValidBaud(b)) {
+          settings.modem_baud = b;
+          saveSettings();
+          Serial.println("Скорость сохранена: " + String(b) + " бод. При запуске модем будет переведён на неё (AT+IPR)");
+          if (b > 57600) Serial.println("Внимание: на 115200 программный порт ESP8266 может терять данные от модема");
+        } else {
+          Serial.println("Неверная скорость");
+        }
+      }
+    } else if (choice == '1') {
       if (readConfirmed("Новый ID (целое число без ведущих нулей): ", v)) {
         uint32_t newId;
         if (parseId(v, newId)) {
@@ -511,8 +671,8 @@ void enterSetupMode() {
       }
     } else if (choice == '8') {
       Serial.println("ВНИМАНИЕ! Будут стёрты ВСЕ настройки платы (вся EEPROM) и записаны заводские значения из прошивки:");
-      Serial.printf("  ID %u, PIN %s, реле питания %u, сервер %s:%u, APN \"%s\"\n", (uint32_t)DEFAULT_DEVICE_ID, DEFAULT_SIM_PIN,
-                    (uint32_t)DEFAULT_ALARM_RELAY, DEFAULT_SERVER_HOST, (uint32_t)DEFAULT_SERVER_PORT, DEFAULT_APN);
+      Serial.printf("  ID %u, PIN %s, реле питания %u, сервер %s:%u, APN \"%s\", модем %u бод\n", (uint32_t)DEFAULT_DEVICE_ID, DEFAULT_SIM_PIN,
+                    (uint32_t)DEFAULT_ALARM_RELAY, DEFAULT_SERVER_HOST, (uint32_t)DEFAULT_SERVER_PORT, DEFAULT_APN, (uint32_t)DEFAULT_MODEM_BAUD);
       Serial.println("После сброса плата перезагрузится.");
       if (readConfirmed("Для подтверждения введите RESET (другой ввод — отмена):", v) && v == "RESET") {
         factoryReset();
@@ -534,12 +694,115 @@ const char* simStatusName(int s) {
   return "UNKNOWN";
 }
 
-// Ожидание регистрации в сети частями по 10 с, чтобы WATCHDOG получал импульсы
+const char* regStatusName(int r) {
+  switch (r) {
+    case REG_UNREGISTERED: return "не зарегистрирован, сеть не ищет";
+    case REG_SEARCHING: return "ищет сеть";
+    case REG_DENIED: return "оператор ОТКАЗАЛ в регистрации";
+    case REG_OK_HOME: return "зарегистрирован (домашняя сеть)";
+    case REG_OK_ROAMING: return "зарегистрирован (роуминг)";
+    default: return "неизвестно";
+  }
+}
+
+// Отчёт о состоянии модема — при неудачах, чтобы было видно, почему плата не выходит на связь
+void modemReport(const char* why) {
+  pulseWatchdog();
+  Serial.printf("---- SIM800L: %s ----\n", why);
+  int16_t csq = modem.getSignalQuality();
+  Serial.printf("  сигнал: CSQ %d%s\n", csq, csq == 99 || csq <= 0 ? " — НЕТ СИГНАЛА (антенна?)" : csq < 10 ? " — слабый" : "");
+  int reg = modem.getRegistrationStatus();
+  Serial.printf("  сеть: %s, оператор: %s\n", regStatusName(reg), modem.getOperator().c_str());
+  int mv = modem.getBattVoltage();
+  Serial.printf("  питание модема: %d мВ%s\n", mv, mv > 0 && mv < 3500 ? " — НИЗКОЕ (нужно 3.8–4.2 В, 2 А)" : mv > 4400 ? " — ВЫСОКОЕ" : "");
+  pulseWatchdog();
+  Serial.printf("  SIM: %s, GPRS: %s\n", modemLastCpin[0] ? modemLastCpin : "?", modem.isGprsConnected() ? "подключён" : "нет");
+  Serial.printf("  события: ошибок %u, низкое напряжение %u, перезагрузок модема %u, выключений %u, потерь SIM %u, разрывов GPRS %u\n",
+                modemEv.errors, modemEv.underVoltage, modemEv.restarts, modemEv.powerDown, modemEv.simLost, modemEv.gprsLost);
+  Serial.println("--------------------------------");
+}
+
+// Поиск скорости модема (сначала рабочая из настроек), затем перевод модема на рабочую скорость
+const uint32_t MODEM_BAUDS[] = {9600, 115200, 57600, 38400, 19200, 4800};
+uint32_t modemBaud = 0;
+
+bool modemTryBaud(uint32_t b, uint32_t timeoutMs) {
+  GSMport.begin(b);
+  waitWithWatchdog(30);
+  return modem.testAT(timeoutMs);
+}
+
+bool modemFindBaud() {
+  const uint32_t want = settings.modem_baud;
+  // сразу после включения модему нужно 2–4 с: ждём ответа на рабочей скорости до 6 с
+  if (modemTryBaud(want, 1500) || modemTryBaud(want, 1500) || modemTryBaud(want, 1500)) {
+    modemBaud = want;
+  } else {
+    for (uint32_t b : MODEM_BAUDS) {
+      if (b == want) continue;
+      serviceWatchdog();
+      Serial.printf("Модем: нет ответа на %u бод, пробую %u…\n", (unsigned)want, (unsigned)b);
+      if (modemTryBaud(b, 800)) { modemBaud = b; break; }
+    }
+    if (!modemBaud) {
+      GSMport.begin(want);
+      Serial.println("SIM800L НЕ ОТВЕЧАЕТ ни на одной скорости: проверьте питание модема (3.8–4.2 В, 2 А), TX модема → D3, RX → D4, общий GND");
+      return false;
+    }
+    Serial.printf("Модем отвечает на %u бод → перевожу на %u бод\n", (unsigned)modemBaud, (unsigned)want);
+    modem.sendAT(GF("+IPR="), want);
+    modem.waitResponse();
+    if (modemTryBaud(want, 1500)) {
+      modem.sendAT(GF("&W"));  // запомнить скорость в модеме
+      modem.waitResponse();
+      modemBaud = want;
+    } else if (modemTryBaud(modemBaud, 1500)) {
+      Serial.printf("Модем не перешёл на %u бод — работаю на %u бод\n", (unsigned)want, (unsigned)modemBaud);
+    } else {
+      return false;
+    }
+  }
+  modemReady = true;
+  Serial.printf("Модем отвечает, скорость %u бод\n", (unsigned)modemBaud);
+  return true;
+}
+
+// Перезагрузка модема: его «RDY» и «+CPIN: NOT READY» в это время — не сбой
+bool modemRestart() {
+  modemReady = false;
+  bool ok = modem.restart();
+  modemReady = true;
+  return ok;
+}
+
+// Ожидание готовности SIM вместо фиксированной паузы (после включения/перезагрузки модема SIM готова через 1–5 с)
+int waitSimStatus(unsigned long timeoutMs) {
+  unsigned long start = millis();
+  int st = SIM_ERROR;
+  while (millis() - start < timeoutMs) {
+    pulseWatchdog();
+    st = modem.getSimStatus(2000);
+    if (st == SIM_READY || st == SIM_LOCKED) return st;
+    if (simAbsent()) return st;  // карты нет — ждать бессмысленно
+    waitWithWatchdog(500);
+  }
+  return st;
+}
+
+// Ожидание регистрации в сети частями по 10 с, чтобы WATCHDOG получал импульсы; отказ оператора — сразу выход
 bool waitForNetworkWithWatchdog(unsigned long timeoutMs) {
   unsigned long start = millis();
   while (millis() - start < timeoutMs) {
     pulseWatchdog();
     if (modem.waitForNetwork(10000L)) return true;
+    pulseWatchdog();
+    int reg = modem.getRegistrationStatus();
+    int16_t csq = modem.getSignalQuality();
+    Serial.printf("Сеть: %s, CSQ %d, прошло %lu с\n", regStatusName(reg), csq, (millis() - start) / 1000);
+    if (reg == REG_DENIED) {
+      Serial.println("Оператор отклоняет SIM: карта не активирована/заблокирована или нет 2G-сети этого оператора");
+      return false;
+    }
   }
   return false;
 }
@@ -547,39 +810,50 @@ bool waitForNetworkWithWatchdog(unsigned long timeoutMs) {
 bool connectGprs() {
   Serial.println("GPRS: подключение (APN \"" + String(settings.apn) + "\")...");
   pulseWatchdog();
+  unsigned long t = millis();
   modem.gprsConnect(settings.apn, "", "");
   pulseWatchdog();
   if (modem.isGprsConnected()) {
-    Serial.println("GPRS connected");
+    Serial.printf("GPRS connected за %lu мс, IP %s\n", millis() - t, modem.getLocalIP().c_str());
     return true;
   }
-  Serial.println("GPRS fail");
+  Serial.println("GPRS fail — причина в строках «SIM800L ОШИБКА» выше (APN, баланс, интернет на SIM, сигнал)");
   return false;
 }
 
 void initGSM() {
-  waitWithWatchdog(2000);
   Serial.println("GSM init start");
   bool networkOk = false;
   for (int attempt = 0; attempt < 3 && !networkOk; attempt++) {
     pulseWatchdog();
     Serial.print("Попытка сети #");
     Serial.println(attempt + 1);
-    modem.restart();
-    modem.setBaud(9600);
-    waitWithWatchdog(9000);
-
-    int simStatus = modem.getSimStatus();
-    waitWithWatchdog(1000);
-    simStatus = modem.getSimStatus();
-    if (simStatus == SIM_ERROR) {
-      Serial.println("SIM error, try getSimCCID to get status");
-      modem.getSimCCID();
-      waitWithWatchdog(1000);
-      simStatus = modem.getSimStatus();
+    if (!modemFindBaud()) {
+      waitWithWatchdog(3000);
+      continue;
     }
+    // первая попытка — без перезагрузки модема: он ищет сеть с момента включения питания
+    // и часто уже зарегистрирован; перезагрузка (AT+CFUN=1,1) — только на повторных попытках
+    // init()/restart() возвращают false и при неготовой SIM — причину SIM разбираем ниже
+    if (attempt == 0) modem.init();
+    else modemRestart();
+    pulseWatchdog();
+    if (!modem.testAT(2000)) {
+      Serial.println("Модем перестал отвечать после инициализации — питание модема?");
+      continue;
+    }
+    modem.sendAT(GF("+CMEE=2"));  // ошибки модема текстом (+CME ERROR: …)
+    modem.waitResponse();
+    String info = modem.getModemInfo();
+    Serial.println("Модем: " + info);
+
+    int simStatus = waitSimStatus(10000);
     Serial.print("SIM статус: ");
     Serial.println(simStatusName(simStatus));
+    if (simStatus == SIM_ERROR) {
+      Serial.printf("SIM не готова (%s): %s\n", modemLastCpin[0] ? modemLastCpin : "нет ответа",
+                    simAbsent() ? "карта не вставлена или нет контакта" : "проверьте карту и питание модема");
+    }
 
     if (simStatus == SIM_LOCKED) {
       Serial.println("SIM locked, try pin");
@@ -622,12 +896,13 @@ void initGSM() {
 
     if (simStatus != SIM_READY) continue;
 
+    unsigned long t = millis();
     if (waitForNetworkWithWatchdog(60000)) {
-      Serial.println("Network OK");
+      Serial.printf("Network OK за %lu мс, CSQ %d, оператор %s\n", millis() - t, modem.getSignalQuality(), modem.getOperator().c_str());
       networkOk = true;
     } else {
+      modemReport("нет регистрации в сети");
       Serial.println("Network fail, retry");
-      waitWithWatchdog(5000);
     }
   }
 
@@ -636,6 +911,7 @@ void initGSM() {
     triggerReset();
   }
   if (!connectGprs() && !connectGprs()) {
+    modemReport("GPRS не подключается");
     Serial.println("GPRS fail после повтора → reset watchdog");
     triggerReset();
   }
@@ -791,6 +1067,7 @@ bool reconnectMQTT() {
       mqttReconnectFailCount++;
       Serial.printf("Ошибок подключения: %u/%u\n", mqttReconnectFailCount, MAX_MQTT_FAILS_BEFORE_RESET);
       if (mqttReconnectFailCount >= MAX_MQTT_FAILS_BEFORE_RESET) {
+        modemReport("GPRS не восстанавливается");
         Serial.println("Too many reconnect fails → reset watchdog");
         triggerReset();
       }
@@ -805,14 +1082,22 @@ bool reconnectMQTT() {
     int st = mqtt.state();
     Serial.printf("MQTT connect failed, state=%d (%s), fails=%u/%u\n", st, mqttStateText(st),
                   mqttReconnectFailCount, MAX_MQTT_FAILS_BEFORE_RESET);
+    if (st == -2 && mqttReconnectFailCount == 2) modemReport("нет соединения с сервером");
     if (mqttReconnectFailCount >= MAX_MQTT_FAILS_BEFORE_RESET) {
+      modemReport("перед перезагрузкой");
       Serial.println("Too many MQTT reconnect fails → reset watchdog");
       triggerReset();
     }
     return false;
   }
 
-  Serial.println("MQTT connected");
+  static bool firstOnline = true;
+  if (firstOnline) {
+    firstOnline = false;
+    Serial.printf("MQTT connected — на связи через %lu с после включения\n", millis() / 1000);
+  } else {
+    Serial.println("MQTT connected");
+  }
   mqttReconnectFailCount = 0;
 
   if (!mqtt.subscribe(comTopic.c_str(), 1)) {
@@ -843,7 +1128,7 @@ void setup() {
   delay(1);
 
   Serial.begin(115200);
-  waitWithWatchdog(5000);
+  waitWithWatchdog(300);  // модем тем временем включается и ищет сеть сам
   Serial.println("\n=== Прошивка MQTT v" FW_VERSION " (протокол v2: сигнал GSM + АЦП АКБ, команда 5 = перезагрузка) ===");
 
   pcf8574.pinMode(reley_kontrol_1, INPUT);
@@ -874,7 +1159,7 @@ void setup() {
   }
   Serial.println("Нормальный запуск");
 
-  GSMport.begin(9600);
+  GSMport.begin(settings.modem_baud);
   initGSM();
 
   // PubSubClient хранит указатель на строку — settings.server_host живёт всё время работы
@@ -908,6 +1193,7 @@ void loop() {
     if (modem.isNetworkConnected()) {
       networkFailCount = 0;
     } else if (++networkFailCount >= MAX_NETWORK_FAILS_BEFORE_RESET) {
+      modemReport("сеть пропала");
       Serial.println("Network lost (SIM800L/SIM problem) → reset watchdog");
       triggerReset();
     } else {
