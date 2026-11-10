@@ -94,7 +94,7 @@ h2 { font-size: 15px; font-weight: 600; }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-head h2 { flex: 1; }
 .card-body { padding: 16px; }
-.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .tile { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; text-align: left; font: inherit; color: inherit; }
 .tile:hover { border-color: var(--line-strong); }
 .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -282,7 +282,7 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 
 /* ---------- Адаптив ---------- */
 @media (max-width: 1100px) {
-  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .layout-2 { grid-template-columns: 1fr; }
   .layout-2 > .stack { display: contents; }
   .o-last { order: 1; } .o-relays { order: 2; } .o-lock { order: 3; } .o-bat { order: 4; } .o-comments { order: 5; } .o-logs { order: 6; } .o-info { order: 7; }
@@ -614,3 +614,6 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 .user-filter select.input { padding-left: 32px; width: auto; max-width: 320px; }
 .user-filter select.input.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--accent); font-weight: 600; }
 @media (max-width: 760px) { .user-filter { flex-basis: 100%; } .user-filter select.input { max-width: none; width: 100%; } }
+
+/* плитка «все реле выключены» (на связи) */
+.dot.all_off { background: var(--pin-yellow); }

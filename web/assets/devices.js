@@ -20,6 +20,7 @@
       if (filter === 'offline' && (d.online || d.state === 'never' || d.state === 'power_off')) return false;
       if (filter === 'batlow' && !(d.online && d.bat_low)) return false;
       if (filter === 'poweroff' && d.state !== 'power_off') return false;
+      if (filter === 'alloff' && !d.all_off) return false;
       if (filter === 'never' && d.state !== 'never') return false;
       return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q) || (d.owner || '').toLowerCase().includes(q);
     });
@@ -137,13 +138,14 @@
   /** Числа в плитках: по всем устройствам или только по устройствам выбранного пользователя */
   function updateTiles() {
     const src = userFilter ? devices.filter(d => userAccess[userFilter]?.[d.id]) : devices;
-    const sum = { total: src.length, online: 0, offline: 0, never: 0, bat_low: 0, power_off: 0 };
+    const sum = { total: src.length, online: 0, offline: 0, never: 0, bat_low: 0, power_off: 0, all_off: 0 };
     for (const d of src) {
       if (d.state === 'never') sum.never++;
       else if (d.online) sum.online++;
       else if (d.state === 'power_off') sum.power_off++;
       else sum.offline++;
       if (d.online && d.bat_low) sum.bat_low++;
+      if (d.all_off) sum.all_off++;
     }
     for (const [k, v] of Object.entries(sum)) { const el = $(`[data-k="${k}"]`); if (el) el.textContent = v; }
     $('[data-f="batlow"]').classList.toggle('lit', sum.bat_low > 0);

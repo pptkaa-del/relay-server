@@ -16,8 +16,7 @@
   function status(d) {
     if (d.break_in) return ['purple', 'ВЗЛОМ ДВЕРИ'];
     if (!d.online) return ['red', d.state === 'never' ? 'ещё не выходило на связь' : d.state === 'power_off' ? 'отключено по питанию' : 'нет данных'];
-    const rel = d.relays.filter(r => !r.lock);
-    if (rel.length && rel.every(r => r.state === 0)) return ['yellow', 'на связи, все реле выключены'];
+    if (d.all_off) return ['yellow', 'на связи, все реле выключены'];
     if (d.door_open) return ['blue', 'на связи, дверь открыта'];   // реле 4 — замок или датчик двери платы ver_5_1
     return ['green', d.door_open === false ? 'на связи, дверь закрыта' : 'на связи'];
   }
