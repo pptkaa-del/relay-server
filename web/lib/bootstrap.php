@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.40';
+const RELAY_VERSION       = '3.41';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -410,22 +410,26 @@ function relay_event(mysqli $db, int $deviceId, string $type, string $message, s
  * и пороги цвета (ниже bad — красный, ниже warn — жёлтый).
  */
 const RELAY_BAT_TYPES = [
-    12 => ['low' => 6.0,  'high' => 15.0, 'col_low' => 'cal_adc_6',  'col_high' => 'cal_adc_15', 'bad' => 11.5, 'warn' => 12.2],
-    24 => ['low' => 19.0, 'high' => 26.0, 'col_low' => 'cal_adc_19', 'col_high' => 'cal_adc_26', 'bad' => 23.0, 'warn' => 24.4],
+    // power_off — пропала связь, а последнее напряжение ниже этого: «отключено по питанию»
+    12 => ['low' => 6.0,  'high' => 15.0, 'col_low' => 'cal_adc_6',  'col_high' => 'cal_adc_15', 'bad' => 11.5, 'warn' => 12.2, 'power_off' => 10.0],
+    24 => ['low' => 19.0, 'high' => 26.0, 'col_low' => 'cal_adc_19', 'col_high' => 'cal_adc_26', 'bad' => 23.0, 'warn' => 24.4, 'power_off' => 20.0],
 ];
 const RELAY_BAT_V_LOW  = 6.0;  // АКБ 12 В (по умолчанию)
 const RELAY_BAT_V_HIGH = 15.0;
 
 /** Ниже этого напряжения АКБ — тревога; если затем пропала связь — «отключено по питанию» (для 12 и 24 В) */
 const RELAY_BAT_LOW_V = 6.0;
-/** Пропала связь, а последнее напряжение АКБ ниже этого — «отключено по питанию» */
-const RELAY_POWER_OFF_V = 20.0;
+/** Пропала связь, а последнее напряжение АКБ ниже порога типа АКБ (power_off: 12 В — 10, 24 В — 20) — «отключено по питанию» */
+function relay_power_off_v($batType): float
+{
+    return RELAY_BAT_TYPES[relay_bat_type($batType)]['power_off'];
+}
 
 /**
  * Последнее напряжение АКБ устройства по калибровке, или null (контроль выключен, версия 1, нет данных).
  * Версия 1-1: АЦП АКБ — в поле сигнала.
  */
-function relay_device_voltage(mysqli $db, int $deviceId): ?float
+function relay_device_voltage(mysqli $db, int $deviceId, ?int &$batType = null): ?float
 {
     $res = @relay_q($db, 'SELECT COALESCE(g.bat_monitor, 1) AS bat_monitor, COALESCE(g.hw_version, d.version) AS ver, g.bat_type,
                                  g.cal_adc_6, g.cal_adc_15, g.cal_adc_19, g.cal_adc_26, d.bat_adc, d.signal_level
@@ -435,6 +439,7 @@ function relay_device_voltage(mysqli $db, int $deviceId): ?float
         return null;
     }
     $type = relay_bat_type($r['bat_type'] ?? 12);
+    $batType = $type;
     $t = RELAY_BAT_TYPES[$type];
     $adc = (int)$r['ver'] === RELAY_V11 ? $r['signal_level'] : $r['bat_adc'];
     return relay_battery_voltage($adc, $r[$t['col_low']], $r[$t['col_high']], $type);

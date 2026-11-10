@@ -246,9 +246,9 @@ function device_rows(mysqli $db, ?int $onlyId = null): array
         $d['online'] = $fresh && $d['status'] !== 0;
         $d['state'] = $d['last_seen_ts'] === null ? 'never'
             : (!$d['online'] ? 'offline' : ($d['status'] === 2 ? 'error' : 'online')); // признак «питание от АКБ» не показывается
-        // АКБ ниже 6 В на связи — тревога; пропала связь при АКБ ниже 20 В — «отключено по питанию»
+        // АКБ ниже 6 В на связи — тревога; пропала связь при АКБ ниже 20 В (24 В) / 10 В (12 В) — «отключено по питанию»
         $d['bat_low'] = $d['bat_on'] && $d['bat_voltage'] !== null && $d['bat_voltage'] < RELAY_BAT_LOW_V;
-        if ($d['state'] === 'offline' && $d['bat_on'] && $d['bat_voltage'] !== null && $d['bat_voltage'] < RELAY_POWER_OFF_V) {
+        if ($d['state'] === 'offline' && $d['bat_on'] && $d['bat_voltage'] !== null && $d['bat_voltage'] < relay_power_off_v($d['bat_type'])) {
             $d['state'] = 'power_off';
         }
         // на связи, но ни одно реле не включено (замок, омывание и отключённые реле не считаются)

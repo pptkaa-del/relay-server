@@ -328,9 +328,9 @@ function checkTimeouts(): void
     foreach ($rows as $row) {
         $id = (int)$row['id'];
         relay_q($c, "UPDATE devices SET conn_state = 'offline' WHERE id = ?", [$id]);
-        $v = relay_device_voltage($c, $id);
-        $v !== null && $v < RELAY_POWER_OFF_V
-            // перед пропаданием связи АКБ была ниже 20 В — устройство отключилось по питанию
+        $v = relay_device_voltage($c, $id, $bt);
+        $v !== null && $v < relay_power_off_v($bt)
+            // перед пропаданием связи АКБ была ниже порога (24 В — 20 В, 12 В — 10 В) — устройство отключилось по питанию
             ? relay_event($c, $id, 'offline', sprintf('Отключено по питанию: АКБ %.1f В, данных нет с ', $v) . date('d.m H:i:s', strtotime($row['last_seen'])), 'error')
             : relay_event($c, $id, 'offline', 'Нет связи: данных от устройства нет с ' . date('d.m H:i:s', strtotime($row['last_seen'])), 'warning');
         writeLog("TIMEOUT: устройство $id — нет данных более " . RELAY_OFFLINE_AFTER . ' с', 'WARN');
