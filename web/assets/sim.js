@@ -13,7 +13,7 @@
       ${sims.map(s => `<tr>
         <td><b class="mono">#${s.device_id}</b><div class="muted" style="font-size:12px">${esc(s.broker_name)} · версия ${s.version === 11 ? '1-1' : s.version} · ${s.interval_sec} с</div></td>
         <td><div class="sim-relays">${s.relays.map((v, i) => `<button class="sim-relay ${v ? 'on' : ''}" data-sim="${s.id}" data-what="relay${i + 1}"
-              title="Реле ${i + 1}: ${v ? 'вкл' : 'выкл'} — нажмите, чтобы переключить без команды">${i + 1}</button>`).join('')}
+              title="Реле ${i + 1}: ${v ? 'питание подано' : 'нет питания'} — нажмите, чтобы переключить без команды">${i + 1}</button>`).join('')}
             ${s.version === 3 ? `<button class="sim-relay door ${s.door_state ? 'open' : ''}" data-sim="${s.id}" data-what="door" title="Датчик двери">дверь ${s.door_state ? 'откр' : 'закр'}</button>
               <button class="sim-relay ${s.lock_state ? 'on' : ''}" data-sim="${s.id}" data-what="lock" title="Замок">замок</button>` : ''}</div></td>
         <td class="nowrap">${s.stat_count}<div class="muted" style="font-size:12px">${s.last_stat_ts ? ago(s.last_stat_ts) : 'ждёт подключения'}</div></td>

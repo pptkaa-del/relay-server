@@ -84,7 +84,7 @@ if ($kind === 'relays') {
     $mine = relay_is_admin() ? null : (relay_user_perms()[$id] ?? []);
     $state = fn(int $n, $v) => $v === null ? '—' : ($n === 4 && $lock4
         ? ([0 => 'дверь открыта', 1 => 'дверь закрыта', 2 => 'ошибка'][(int)$v] ?? (string)$v)
-        : ([0 => 'выкл', 1 => 'вкл', 2 => 'ошибка'][(int)$v] ?? (string)$v));
+        : ([0 => 'нет питания', 1 => 'питание подано', 2 => 'ошибка'][(int)$v] ?? (string)$v));
     $expand = function (array $r) use ($g, $lock4, $mine, $state): array {
         $d = $r['data'] ? json_decode($r['data'], true) : null;
         $b = $d['before'] ?? null;

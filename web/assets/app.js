@@ -102,7 +102,8 @@ const App = (() => {
     power_off: ['power_off', 'Отключено по питанию'],
   };
   const stateBadge = st => { const [c, t] = STATE[st] || STATE.never; return `<span class="badge ${c}"><span class="dot ${c}"></span>${t}</span>`; };
-  const RSTATE = { 0: 'выкл', 1: 'вкл', 2: 'ошибка' };
+  // состояние реле: вкл — на устройство подаётся электропитание, выкл — питания нет
+  const RSTATE = { 0: 'нет питания', 1: 'питание подано', 2: 'ошибка' };
 
   /** CSQ 0..31 (99 — нет данных) → 0..4 полоски */
   function signalBars(sl) {

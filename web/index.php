@@ -21,7 +21,7 @@ layout_head('Устройства', 'devices', $login);
   <button class="tile" data-f="offline"><div class="tile-label"><span class="dot offline"></span>Нет связи</div><div class="tile-value" data-k="offline">—</div><div class="tile-sub">данных нет &gt; 350 с</div></button>
   <button class="tile tile-alarm" data-f="batlow"><div class="tile-label"><span class="dot bat_low"></span>АКБ ниже 6 В</div><div class="tile-value" data-k="bat_low">—</div><div class="tile-sub">тревога: на связи, АКБ разряжена</div></button>
   <button class="tile" data-f="poweroff"><div class="tile-label"><span class="dot power_off"></span>Отключены по питанию</div><div class="tile-value" data-k="power_off">—</div><div class="tile-sub">АКБ ниже 20 В (24 В) или 10 В (12 В), связь пропала</div></button>
-  <button class="tile" data-f="alloff"><div class="tile-label"><span class="dot all_off"></span>Все реле выключены</div><div class="tile-value" data-k="all_off">—</div><div class="tile-sub">на связи, ни одно реле не включено</div></button>
+  <button class="tile" data-f="alloff"><div class="tile-label"><span class="dot all_off"></span>Питание нигде не подано</div><div class="tile-value" data-k="all_off">—</div><div class="tile-sub">на связи, ни на одно реле не подаётся питание</div></button>
   <button class="tile" data-f="never"><div class="tile-label"><span class="dot never"></span>Ожидают</div><div class="tile-value" data-k="never">—</div><div class="tile-sub">ещё не выходили на связь</div></button>
 </div>
 
@@ -60,7 +60,7 @@ layout_head('Устройства', 'devices', $login);
         <div class="map-legend">
           <span><i class="pin c-green"></i>на связи</span>
           <span><i class="pin c-red"></i>нет данных</span>
-          <span><i class="pin c-yellow"></i>все реле выключены</span>
+          <span><i class="pin c-yellow"></i>питание нигде не подано</span>
           <span><i class="pin c-blue"></i>дверь открыта</span>
           <span><i class="pin c-purple"></i>взлом двери</span>
         </div>
