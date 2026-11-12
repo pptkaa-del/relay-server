@@ -273,6 +273,8 @@ fi
 log "Файлы веб-панели → $WEB_ROOT"
 NEW_ROOT="$WEB_ROOT.new.$$"
 rm -rf "$NEW_ROOT"; cp -a "$SRC_DIR/web" "$NEW_ROOT"
+# описание внешнего API — для страницы «Описание API» (каталог lib закрыт для прямого доступа)
+[ -f "$SRC_DIR/docs/API.md" ] && cp -a "$SRC_DIR/docs/API.md" "$NEW_ROOT/lib/API.md"
 chown -R root:root "$NEW_ROOT"
 find "$NEW_ROOT" -type d -exec chmod 755 {} +
 find "$NEW_ROOT" -type f -exec chmod 644 {} +

@@ -6,7 +6,7 @@
  * Настройки читаются из /etc/relay-server/config.php (создаётся install.sh).
  */
 
-const RELAY_VERSION       = '3.41';
+const RELAY_VERSION       = '3.42';
 const RELAY_CONFIG_FILE   = '/etc/relay-server/config.php';
 const RELAY_USERS_FILE    = '/etc/relay-server/users.php';
 const RELAY_OFFLINE_AFTER = 350; // секунд без stat → плата оффлайн (протокол, п.5)
@@ -205,9 +205,25 @@ function relay_check_password(string $login, string $pass): bool
     return true;
 }
 
+/**
+ * Клиент внешнего API (api/v1), вошедший по ключу: строка api_clients + 'perms'. Задаётся один раз в api/v1/_init.php;
+ * пока задан, он — текущий пользователь с ролью «Пользователь» и правами только на свои устройства.
+ */
+function relay_api_client(?array $set = null): ?array
+{
+    static $client = null;
+    if ($set !== null) {
+        $client = $set;
+    }
+    return $client;
+}
+
 /** Текущий пользователь (массив relay_user_info) или null. Удалённый, отключённый или сменивший пароль — выходит. */
 function relay_current_user_info(): ?array
 {
+    if (($api = relay_api_client()) !== null) {
+        return ['login' => 'api:' . $api['name'], 'name' => $api['name'], 'role' => 'user', 'source' => 'api', 'enabled' => true, 'pwv' => ''];
+    }
     static $cache = false;
     if ($cache !== false) {
         return $cache;
@@ -259,6 +275,9 @@ function relay_forbidden(string $msg = 'Недостаточно прав: ра�
  */
 function relay_user_perms(): ?array
 {
+    if (($api = relay_api_client()) !== null) {
+        return $api['perms'];
+    }
     static $cache = false;
     if ($cache !== false) {
         return $cache;

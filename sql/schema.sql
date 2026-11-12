@@ -424,3 +424,40 @@ ALTER TABLE `devices`
 -- v3.38: новые устройства по умолчанию с АКБ 24 В (у существующих тип не меняется)
 -- ---------------------------------------------------------------------------
 ALTER TABLE `general_info` MODIFY `bat_type` TINYINT(4) NOT NULL DEFAULT 24;
+
+-- ---------------------------------------------------------------------------
+-- v3.42: монтаж устройства: 0 — смонтировано, 1 — не смонтировано, 2 — демонтировано (в ремонт).
+--        Существующие устройства — смонтированы; новые по умолчанию — «не смонтировано».
+--        Не смонтированные и демонтированные без связи не считаются «нет связи».
+-- ---------------------------------------------------------------------------
+ALTER TABLE `general_info`
+    ADD COLUMN IF NOT EXISTS `mount_state` TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS `mount_changed_at` DATETIME DEFAULT NULL;
+ALTER TABLE `general_info` MODIFY `mount_state` TINYINT(1) NOT NULL DEFAULT 1;
+
+-- ---------------------------------------------------------------------------
+-- v3.42: пользователи внешнего API (сторонние системы). Ключ хранится только в виде SHA-256.
+--   devices: '*' — все устройства, иначе список «1, 3, 5-10»; can_control: 0 — только чтение, 1 — и управление
+--   ip_allow: '' — с любых адресов, иначе список IP через запятую
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `api_clients` (
+    `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(64) NOT NULL,
+    `note` VARCHAR(300) NOT NULL DEFAULT '',
+    `token_hash` CHAR(64) NOT NULL,
+    `token_hint` VARCHAR(16) NOT NULL DEFAULT '',
+    `can_control` TINYINT(1) NOT NULL DEFAULT 0,
+    `devices` VARCHAR(2000) NOT NULL DEFAULT '*',
+    `ip_allow` VARCHAR(500) NOT NULL DEFAULT '',
+    `rate_limit` INT(11) NOT NULL DEFAULT 120,
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+    `created_by` VARCHAR(64) DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `last_used_at` DATETIME DEFAULT NULL,
+    `last_ip` VARCHAR(45) DEFAULT NULL,
+    `requests` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    `rl_minute` INT(11) NOT NULL DEFAULT 0,
+    `rl_count` INT(11) NOT NULL DEFAULT 0,
+    UNIQUE KEY `uk_name` (`name`),
+    UNIQUE KEY `uk_token` (`token_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

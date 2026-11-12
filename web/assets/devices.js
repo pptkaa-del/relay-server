@@ -22,6 +22,7 @@
       if (filter === 'poweroff' && d.state !== 'power_off') return false;
       if (filter === 'alloff' && !d.all_off) return false;
       if (filter === 'never' && d.state !== 'never') return false;
+      if (filter === 'mount' && d.mount === 'mounted') return false;
       return !q || String(d.id) === q || d.name.toLowerCase().includes(q) || (d.address || '').toLowerCase().includes(q) || (d.owner || '').toLowerCase().includes(q);
     });
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
@@ -70,7 +71,7 @@
     const lockPip = d.has_lock ? `<i class="lock-pip ${d.door_state === 1 ? 'open' : d.door_state === 0 ? 'closed' : 'na'}" title="Замок: ${d.door_state == null ? 'нет данных' : d.door_state === 1 ? 'дверь открыта' : 'дверь закрыта'}"></i>` : '';
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
-      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${userFilter && userAccess[userFilter]?.[d.id] === 'view' ? '<span class="badge" title="У пользователя только просмотр">просмотр</span>' : ''}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}<span class="mono muted">#${d.id}</span></div>
+      <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${userFilter && userAccess[userFilter]?.[d.id] === 'view' ? '<span class="badge" title="У пользователя только просмотр">просмотр</span>' : ''}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}${d.mount !== 'mounted' ? `<span class="badge ${d.mount}" title="${App.MOUNT_LABEL[d.mount]}">${d.mount === 'repair' ? 'ремонт' : 'не смонт.'}</span>` : ''}<span class="mono muted">#${d.id}</span></div>
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}${lockPip}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }
@@ -106,7 +107,8 @@
         ${d.lock_access === 'control' ? `<button class="btn sm primary" data-c="3" data-r="5" ${lockDis}>Открыть замок</button>
         <button class="btn sm" data-c="1" data-r="5" ${lockDis}>Подать питание</button>
         <button class="btn sm" data-c="2" data-r="5" ${lockDis}>Снять питание</button>` : viewOnly}</div>` : '';
-    const note = d.state === 'never' ? 'Устройство ещё не выходило на связь.' : !d.online ? 'Устройство не на связи: команды выполнятся при подключении.' : '';
+    const note = d.mount !== 'mounted' ? `Устройство ${App.MOUNT_LABEL[d.mount]}${d.mount_ts ? ' · с ' + fmtTime(d.mount_ts) : ''}: отсутствие связи не считается неисправностью.`
+      : d.state === 'never' ? 'Устройство ещё не выходило на связь.' : !d.online ? 'Устройство не на связи: команды выполнятся при подключении.' : '';
     return `<section class="card dev-panel state-${d.state}">
       <div class="card-head">
         <button class="btn sm ghost" data-sel="0" title="Вернуться к карте">← Карта</button>
@@ -138,10 +140,13 @@
   /** Числа в плитках: по всем устройствам или только по устройствам выбранного пользователя */
   function updateTiles() {
     const src = userFilter ? devices.filter(d => userAccess[userFilter]?.[d.id]) : devices;
-    const sum = { total: src.length, online: 0, offline: 0, never: 0, bat_low: 0, power_off: 0, all_off: 0 };
+    const sum = { total: src.length, online: 0, offline: 0, never: 0, bat_low: 0, power_off: 0, all_off: 0, not_mounted: 0, repair: 0, unmounted: 0 };
     for (const d of src) {
-      if (d.state === 'never') sum.never++;
-      else if (d.online) sum.online++;
+      // не смонтированные и демонтированные (в ремонт) без связи не считаются «нет связи» / «ожидают»
+      if (d.mount !== 'mounted') { sum[d.mount]++; sum.unmounted++; }
+      if (d.online) sum.online++;
+      else if (d.mount !== 'mounted') continue;
+      else if (d.state === 'never') sum.never++;
       else if (d.state === 'power_off') sum.power_off++;
       else sum.offline++;
       if (d.online && d.bat_low) sum.bat_low++;
@@ -244,6 +249,7 @@
 
   /* ---------- Добавление платы ---------- */
   const addDlg = $('#add'), addForm = $('#add-form'), F = k => addForm.elements[k];
+  App.bindMount(addForm);
   // подписи полей калибровки по типу АКБ: 12 В — АЦП при 6 и 15 В, 24 В — при 19 и 26 В
   App.bindBatType(addForm);
   App.bindHwVersion(addForm);
@@ -295,6 +301,7 @@
     const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
     p.relay4_mode = bulkForm.elements.relay4_mode.value;
+    p.mount = bulkForm.elements.mount.value;
     p.owner = bulkForm.elements.owner.value.trim();
     p.hw_version = bulkForm.elements.hw_version.value;
     p.bat_monitor = bulkForm.elements.bat_monitor.value;
@@ -374,6 +381,7 @@
     p.bat_monitor = F('bat_monitor').checked && F('hw_version').value !== '1' ? '1' : '0';
     p.lock_unused = F('lock_unused').checked ? '1' : '0';
     p.relay4_mode = F('relay4_mode').value;
+    p.mount = App.mountValue(addForm);
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = F(`relay${i}_off`).checked ? '1' : '0';
     const btn = $('#add-submit'), res = $('#add-result');
     btn.disabled = true; res.className = 'result wait'; res.textContent = 'Регистрирую устройство в брокере…';

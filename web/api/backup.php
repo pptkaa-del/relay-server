@@ -297,8 +297,9 @@ switch ($action) {
             $addr = trim((string)($g['address'] ?? ''));
             if ($isNew) {
                 // строка в панели сразу; учётные записи MQTT — после цикла одной командой для всех новых
-                relay_q($connect, "INSERT IGNORE INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4)
-                                   VALUES (?, ?, ?, '', 'Реле 1', 'Реле 2', 'Реле 3', 'Реле 4')", [$id, $name, $addr]);
+                // загруженные устройства уже работают — «смонтировано» (если в файле есть mount_state, он применится ниже)
+                relay_q($connect, "INSERT IGNORE INTO general_info (id, name_obj, address, coordinates, name_reley_1, name_reley_2, name_reley_3, name_reley_4, mount_state)
+                                   VALUES (?, ?, ?, '', 'Реле 1', 'Реле 2', 'Реле 3', 'Реле 4', 0)", [$id, $name, $addr]);
                 relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$id]);
             }
             // все известные колонки из файла; NULL в NOT NULL-колонку не пишем

@@ -105,6 +105,10 @@ layout_head("Устройство #$id", 'devices', $login);
         <label class="field">Координаты<input class="input" name="coordinates" maxlength="100"></label>
         <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200"></label>
+        <div class="field full mount-field"><span>Монтаж</span>
+          <div class="mount-checks"><label class="check"><input type="checkbox" name="not_mounted" value="1"> Не смонтировано</label>
+          <label class="check"><input type="checkbox" name="repair" value="1"> Демонтировано (в ремонт)</label></div>
+          <span class="hint">у таких устройств отсутствие связи не считается неисправностью</span></div>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено</label></div>

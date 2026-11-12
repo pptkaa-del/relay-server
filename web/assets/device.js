@@ -109,6 +109,7 @@
     const lc = d.last_command;
     $('#info').innerHTML = `
       <dt>ID устройства</dt><dd class="mono">${d.id}</dd>
+      <dt>Монтаж</dt><dd>${d.mount === 'mounted' ? 'смонтировано' : `<span class="badge ${d.mount}">${App.MOUNT_LABEL[d.mount]}</span>`}${d.mount_ts ? ` <span class="muted">с ${fmtTime(d.mount_ts)}</span>` : ''}</dd>
       <dt>Для кого установлено</dt><dd>${d.owner ? esc(d.owner) : '<span class="muted">не указано</span>'}</dd>
       <dt>SIM-карта</dt><dd>${d.sim_phone ? `<a class="mono" href="tel:${esc(d.sim_phone)}">${App.fmtPhone(d.sim_phone)}</a>` : '<span class="muted">не указан</span>'}</dd>
       <dt>MQTT логин</dt><dd class="mono">relay-${d.id}</dd>
@@ -268,6 +269,7 @@
   }
   App.bindBatType(form);
   App.bindHwVersion(form);
+  App.bindMount(form);
   form.elements.bat_type.addEventListener('change', () => { if (dev) fillCal(true); });
   $('#b-edit').addEventListener('click', () => {
     if (!dev) return;
@@ -277,6 +279,7 @@
     form.elements.hw_version.value = dev.hw_version ? String(dev.hw_version) : '';
     form.dataset.reportedVersion = dev.version || '';
     form.elements.lock_unused.checked = !!dev.lock_unused;
+    App.setMount(form, dev.mount);
     form.elements.bat_monitor.checked = dev.bat_monitor !== false;
     form.dispatchEvent(new Event('hw-version'));
     form.elements.bat_type.value = String(dev.bat_type || 12);
@@ -297,6 +300,7 @@
     p.bat_monitor = form.elements.bat_monitor.checked && form.elements.hw_version.value !== '1' ? '1' : '0';
     p.lock_unused = form.elements.lock_unused.checked ? '1' : '0';
     p.relay4_mode = form.elements.relay4_mode.value;
+    p.mount = App.mountValue(form);
     for (const i of [1, 2, 3, 4]) p[`relay${i}_off`] = form.elements[`relay${i}_off`].checked ? '1' : '0';
     try { await api('/api/devices.php', p, true); toast('Сохранено', 'ok'); load(); loadLog(true); } catch (e) { toast(e.message, 'err'); }
   });

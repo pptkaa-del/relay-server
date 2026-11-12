@@ -100,7 +100,18 @@ const App = (() => {
     online: ['online', 'На связи'], offline: ['offline', 'Нет связи'], error: ['error', 'Ошибка устройства'],
     alarm: ['alarm', 'Питание от АКБ'], never: ['never', 'Не выходило на связь'],
     power_off: ['power_off', 'Отключено по питанию'],
+    not_mounted: ['not_mounted', 'Не смонтировано'], repair: ['repair', 'В ремонте'],
   };
+  const MOUNT_LABEL = { mounted: 'смонтировано', not_mounted: 'не смонтировано', repair: 'демонтировано (в ремонт)' };
+  /** Флажки «Не смонтировано» и «Демонтировано (в ремонт)»: отмечен может быть только один */
+  function bindMount(form) {
+    const a = form.elements.not_mounted, b = form.elements.repair;
+    if (!a || !b) return;
+    a.addEventListener('change', () => { if (a.checked) b.checked = false; });
+    b.addEventListener('change', () => { if (b.checked) a.checked = false; });
+  }
+  const mountValue = form => form.elements.repair.checked ? 'repair' : form.elements.not_mounted.checked ? 'not_mounted' : 'mounted';
+  function setMount(form, m) { form.elements.not_mounted.checked = m === 'not_mounted'; form.elements.repair.checked = m === 'repair'; }
   const stateBadge = st => { const [c, t] = STATE[st] || STATE.never; return `<span class="badge ${c}"><span class="dot ${c}"></span>${t}</span>`; };
   // состояние реле: вкл — на устройство подаётся электропитание, выкл — питания нет
   const RSTATE = { 0: 'нет питания', 1: 'питание подано', 2: 'ошибка' };
@@ -343,5 +354,5 @@ const App = (() => {
   /** Подпись версии: 11 → «1-1» */
   const verLabel = v => v === 11 ? '1-1' : String(v);
 
-  return { verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  return { MOUNT_LABEL, bindMount, mountValue, setMount, verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();

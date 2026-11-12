@@ -23,6 +23,7 @@ layout_head('Устройства', 'devices', $login);
   <button class="tile" data-f="poweroff"><div class="tile-label"><span class="dot power_off"></span>Отключены по питанию</div><div class="tile-value" data-k="power_off">—</div><div class="tile-sub">АКБ ниже 20 В (24 В) или 10 В (12 В), связь пропала</div></button>
   <button class="tile" data-f="alloff"><div class="tile-label"><span class="dot all_off"></span>Питание нигде не подано</div><div class="tile-value" data-k="all_off">—</div><div class="tile-sub">на связи, ни на одно реле не подаётся питание</div></button>
   <button class="tile" data-f="never"><div class="tile-label"><span class="dot never"></span>Ожидают</div><div class="tile-value" data-k="never">—</div><div class="tile-sub">ещё не выходили на связь</div></button>
+  <button class="tile" data-f="mount"><div class="tile-label"><span class="dot repair"></span>Не смонтированы / в ремонте</div><div class="tile-value" data-k="unmounted">—</div><div class="tile-sub">не смонтировано <b data-k="not_mounted">0</b> · в ремонте <b data-k="repair">0</b></div></button>
 </div>
 
 <section class="card attention hidden" id="pending">
@@ -40,6 +41,8 @@ layout_head('Устройства', 'devices', $login);
     <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
     <select class="input" id="user-filter"><option value="">Все пользователи</option></select></label>
   <span class="spacer"></span>
+  <a class="btn admin-only" id="b-export-repair" href="/api/devices.php?action=export_repair" title="Таблица для Excel: ID, название, адрес, координаты устройств «демонтировано (в ремонт)»">
+    <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Выгрузить «в ремонте»</a>
   <div class="seg" id="sort">
     <button data-s="id" class="on">По ID</button><button data-s="name">По имени</button><button data-s="seen">По данным</button>
   </div>
@@ -63,6 +66,7 @@ layout_head('Устройства', 'devices', $login);
           <span><i class="pin c-yellow"></i>питание нигде не подано</span>
           <span><i class="pin c-blue"></i>дверь открыта</span>
           <span><i class="pin c-purple"></i>взлом двери</span>
+          <span><i class="pin c-gray"></i>не смонтировано / в ремонте</span>
         </div>
       </div>
       <div class="map-wrap" id="map-wrap">
@@ -86,6 +90,10 @@ layout_head('Устройства', 'devices', $login);
         <label class="field">Адрес<input class="input" name="address" maxlength="300" placeholder="ул. Ленина, 14"></label>
         <label class="field">Номер SIM-карты<input class="input mono" name="sim_phone" type="tel" inputmode="tel" maxlength="20" pattern="[0-9+()\s\-]{10,20}" title="+7 и 10 цифр, например +79997777777"></label>
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200"></label>
+        <div class="field full mount-field"><span>Монтаж</span>
+          <div class="mount-checks"><label class="check"><input type="checkbox" name="not_mounted" value="1" checked> Не смонтировано</label>
+          <label class="check"><input type="checkbox" name="repair" value="1"> Демонтировано (в ремонт)</label></div>
+          <span class="hint">у таких устройств отсутствие связи не считается неисправностью · новое устройство — «не смонтировано»</span></div>
         <div class="field relay-field"><span>Реле 1</span><input class="input" name="relay1" maxlength="60" placeholder="Реле 1"><label class="check relay-off"><input type="checkbox" name="relay1_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 2</span><input class="input" name="relay2" maxlength="60" placeholder="Реле 2"><label class="check relay-off"><input type="checkbox" name="relay2_off" value="1"> отключено</label></div>
         <div class="field relay-field"><span>Реле 3</span><input class="input" name="relay3" maxlength="60" placeholder="Реле 3"><label class="check relay-off"><input type="checkbox" name="relay3_off" value="1"> отключено</label></div>
@@ -144,6 +152,9 @@ layout_head('Устройства', 'devices', $login);
           <span class="hint">через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</span></label>
         <div class="full bulk-preview" id="bulk-preview"></div>
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="не менять"></label>
+        <label class="field full">Монтаж<select class="input" name="mount">
+          <option value="">не менять</option><option value="mounted">смонтировано</option><option value="not_mounted">не смонтировано</option>
+          <option value="repair">демонтировано (в ремонт)</option></select></label>
         <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="не менять"></label>

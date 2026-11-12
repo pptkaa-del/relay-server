@@ -323,11 +323,17 @@ function checkTimeouts(): void
             writeLog("MQTT: не удалось вернуть доступ устройству $bid: $out", 'ERROR');
         }
     }
-    $rows = relay_rows(relay_q($c, "SELECT id, last_seen FROM devices
-                                    WHERE conn_state = 'online' AND last_seen < NOW() - INTERVAL ? SECOND", [RELAY_OFFLINE_AFTER]));
+    $rows = relay_rows(relay_q($c, "SELECT d.id, d.last_seen, COALESCE(g.mount_state, 0) AS mount_state FROM devices d
+                                    LEFT JOIN general_info g ON g.id = d.id
+                                    WHERE d.conn_state = 'online' AND d.last_seen < NOW() - INTERVAL ? SECOND", [RELAY_OFFLINE_AFTER]));
     foreach ($rows as $row) {
         $id = (int)$row['id'];
         relay_q($c, "UPDATE devices SET conn_state = 'offline' WHERE id = ?", [$id]);
+        if ((int)$row['mount_state'] !== 0) {
+            // не смонтировано / демонтировано (в ремонт): отсутствие связи — не неисправность
+            relay_event($c, $id, 'offline', 'Связь пропала (' . ((int)$row['mount_state'] === 2 ? 'демонтировано, в ремонт' : 'не смонтировано') . ')', 'info');
+            continue;
+        }
         $v = relay_device_voltage($c, $id, $bt);
         $v !== null && $v < relay_power_off_v($bt)
             // перед пропаданием связи АКБ была ниже порога (24 В — 20 В, 12 В — 10 В) — устройство отключилось по питанию

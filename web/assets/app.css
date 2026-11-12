@@ -94,7 +94,7 @@ h2 { font-size: 15px; font-weight: 600; }
 .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .card-head h2 { flex: 1; }
 .card-body { padding: 16px; }
-.tiles { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.tiles { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
 .tile { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; text-align: left; font: inherit; color: inherit; }
 .tile:hover { border-color: var(--line-strong); }
 .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -617,3 +617,23 @@ pre.code { margin: 6px 0 12px; padding: 10px 12px; background: var(--surface-2);
 
 /* плитка «все реле выключены» (на связи) */
 .dot.all_off { background: var(--pin-yellow); }
+
+/* монтаж: не смонтировано / демонтировано (в ремонт) */
+:root { --mount: #8b8fa3; }
+.dot.not_mounted, .dot.repair { background: var(--mount); }
+.badge.not_mounted, .badge.repair { background: color-mix(in srgb, var(--mount) 18%, transparent); color: var(--text-2); }
+.dev-panel.state-not_mounted, .dev-panel.state-repair { border-top: 3px solid var(--mount); }
+.pin.c-gray, .cluster.c-gray { background: var(--mount); }
+.mount-field > span:first-child { font-size: 13px; font-weight: 550; }
+.mount-checks { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.tile-sub b { font-weight: 650; color: var(--text); }
+body:not(.role-admin) .admin-only { display: none !important; }
+
+/* внешний API: пример запроса и страница описания */
+.code-sample { margin: 8px 0 14px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--idle-soft); color: var(--text);
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+.api-doc { max-width: 980px; line-height: 1.55; }
+.api-doc h1 { font-size: 22px; margin: 0 0 10px; } .api-doc h2 { font-size: 18px; margin: 26px 0 8px; } .api-doc h3 { font-size: 15.5px; margin: 20px 0 6px; }
+.api-doc code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 1px 5px; border-radius: 4px; background: var(--idle-soft); }
+.api-doc .doc-tbl { margin: 6px 0 12px; } .api-doc .doc-tbl td, .api-doc .doc-tbl th { vertical-align: top; }
+.api-doc ul { padding-left: 22px; }
