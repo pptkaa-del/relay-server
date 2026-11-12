@@ -72,6 +72,7 @@
     const pips = d.relays.map(r => `<i class="${r.state === 1 ? 'on' : r.state === 2 ? 'err' : r.state == null ? 'na' : ''}${r.lock ? ' lock' : ''}" title="${esc(r.name)}: ${relayStateText(r)}"></i>`).join('');
     return `<button class="side-item ${d.id === selected ? 'sel' : ''}" data-sel="${d.id}">
       <div class="side-item-top"><span class="dot ${d.break_in ? 'breakin' : d.state}"></span><span class="side-item-name">${esc(d.name)}</span>${breakBadge(d)}${userFilter && userAccess[userFilter]?.[d.id] === 'view' ? '<span class="badge" title="У пользователя только просмотр">просмотр</span>' : ''}${d.bat_low && d.online ? '<span class="badge bad" title="Напряжение АКБ ниже 6 В">АКБ</span>' : ''}${d.mount !== 'mounted' ? `<span class="badge ${d.mount}" title="${App.MOUNT_LABEL[d.mount]}">${d.mount === 'repair' ? 'ремонт' : 'не смонт.'}</span>` : ''}<span class="mono muted">#${d.id}</span></div>
+      ${d.address ? `<div class="side-item-addr" title="${esc(d.address)}">${esc(d.address)}</div>` : ''}
       <div class="side-item-meta side-dev-meta"><span class="pips">${pips}${lockPip}</span><span>вкл ${on}/${d.relays.length}</span>
         <span class="spacer"></span><span data-ago="${d.last_data_ts || ''}">${ago(d.last_data_ts)}</span></div></button>`;
   }

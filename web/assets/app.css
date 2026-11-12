@@ -683,3 +683,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 @media (max-width: 1200px) { .srv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .srv-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .srv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .srv-charts { grid-template-columns: 1fr; } }
 @media (max-width: 420px) { .nav a { font-size: 10px; letter-spacing: -.1px; } }
+
+/* список устройств: адрес под названием */
+.side-item-addr { font-size: 12.5px; color: var(--text-2); margin: 1px 0 0 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
