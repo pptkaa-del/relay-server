@@ -54,7 +54,7 @@ sync_acl() {
         echo "# Сгенерировано relay-device. Не редактируйте вручную."
         echo "user $MQTT_USER"
         echo "topic readwrite #"
-        echo 'topic read $SYS/broker/log/#'
+        echo 'topic read $SYS/broker/#'   # журнал брокера (незарегистрированные платы) и статистика для вкладки «Сервер»
         echo
         # дополнительные пользователи (mqtt-user-add или config/mqtt-users.conf из репозитория)
         if [ -f "$MQTT_USERS" ]; then

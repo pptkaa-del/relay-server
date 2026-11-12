@@ -20,6 +20,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require __DIR__ . '/lib/bootstrap.php';
+require __DIR__ . '/lib/serverstats.php';
 
 use PhpMqtt\Client\MqttClient;
 
@@ -343,9 +344,59 @@ function checkTimeouts(): void
     }
 }
 
+/**
+ * Раз в минуту: показатели сервера в server_stats (история для вкладки «Сервер»),
+ * статистика брокера ($SYS) и подписчика — в server_state.
+ */
+function statsTick(): void
+{
+    global $statsPrev, $brokerSys, $conns;
+    $c = db();
+    $cpuNow = relay_cpu_times();
+    $netNow = relay_net_bytes();
+    $t = microtime(true);
+    $cpu = $iowait = $rx = $tx = null;
+    if ($statsPrev) {
+        [$cpu, $iowait] = relay_cpu_percent($statsPrev['cpu'], $cpuNow) ?? [null, null];
+        $dt = max(1.0, $t - $statsPrev['t']);
+        if ($netNow[0] >= $statsPrev['net'][0] && $netNow[1] >= $statsPrev['net'][1]) {
+            $rx = (int)round(($netNow[0] - $statsPrev['net'][0]) / $dt);
+            $tx = (int)round(($netNow[1] - $statsPrev['net'][1]) / $dt);
+        }
+    }
+    $statsPrev = ['cpu' => $cpuNow, 'net' => $netNow, 't' => $t];
+    if ($cpu === null) {
+        return; // первый отсчёт после запуска — загрузку считаем со следующего
+    }
+    $mem = relay_meminfo();
+    $dTotal = (int)(@disk_total_space('/') ?: 0);
+    $dFree = (int)(@disk_free_space('/') ?: 0);
+    $load1 = (float)explode(' ', (string)@file_get_contents('/proc/loadavg'))[0];
+    $num = fn($k) => isset($brokerSys[$k]) && is_numeric($brokerSys[$k]) ? (float)$brokerSys[$k] : null;
+    $online = mysqli_fetch_row(relay_q($c, 'SELECT COUNT(*) FROM devices WHERE last_seen > NOW() - INTERVAL ? SECOND AND status <> 0', [RELAY_OFFLINE_AFTER]));
+    relay_q($c, 'REPLACE INTO server_stats (ts, cpu, iowait, load1, mem_used, mem_total, swap_used, disk_used, disk_total, net_rx, net_tx,
+                                           mqtt_clients, mqtt_in, mqtt_out, devices_online)
+                 VALUES (DATE_FORMAT(NOW(), "%Y-%m-%d %H:%i:00"), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [$cpu, $iowait, $load1, $mem['used'], $mem['total'], $mem['swap_used'], $dTotal - $dFree, $dTotal, $rx, $tx,
+         $num('clients/connected'), $num('load/messages/received/1min'), $num('load/messages/sent/1min'), (int)($online[0] ?? 0)]);
+    $brokers = [];
+    foreach ($conns as $id => $cn) {
+        $brokers[] = ['id' => $id, 'name' => $cn['cfg']['name'] ?? (string)$id, 'connected' => $cn['client'] !== null];
+    }
+    $state = [
+        'broker' => $brokerSys,
+        'subscriber' => ['pid' => getmypid(), 'started' => (int)$GLOBALS['started'], 'memory' => memory_get_usage(true),
+                         'memory_peak' => memory_get_peak_usage(true), 'brokers' => $brokers, 'php' => PHP_VERSION],
+    ];
+    foreach ($state as $k => $v) {
+        relay_q($c, 'REPLACE INTO server_state (k, v) VALUES (?, ?)', [$k, json_encode($v, JSON_UNESCAPED_UNICODE)]);
+    }
+}
+
 function cleanupLogs(): void
 {
     $c = db();
+    @relay_q($c, 'DELETE FROM server_stats WHERE ts < NOW() - INTERVAL 30 DAY');
     $cfg = relay_config();
     $days = (int)($cfg['log_retention_days'] ?? 14);
     $evDays = (int)($cfg['events_retention_days'] ?? 180);
@@ -401,8 +452,11 @@ function handleBrokerLog(string $line): void
 function onMessage(array $broker, string $topic, string $message, bool $retained): void
 {
     if (str_starts_with($topic, '$SYS/')) {
-        if ((int)$broker['is_local'] === 1 && str_starts_with($topic, '$SYS/broker/log/')) {
+        if ((int)$broker['is_local'] === 1 && str_starts_with($topic, '$SYS/broker/log/N')) {
             try { handleBrokerLog($message); } catch (Throwable $e) { writeLog('журнал брокера: ' . $e->getMessage(), 'ERROR'); }
+        } elseif ((int)$broker['is_local'] === 1 && !str_starts_with($topic, '$SYS/broker/log/')) {
+            global $brokerSys;
+            $brokerSys[substr($topic, 12)] = mb_substr($message, 0, 200); // статистика брокера для вкладки «Сервер»
         }
         return; // служебные сообщения брокера в журнал не пишем
     }
@@ -821,7 +875,7 @@ function connectBroker(int $id): void
             throw new RuntimeException('нет ни одной верной подписки: ' . implode('; ', $bad));
         }
         if ((int)$b['is_local'] === 1) {
-            $topics[] = '$SYS/broker/log/N'; // попытки подключения незарегистрированных плат
+            $topics[] = '$SYS/broker/#'; // журнал (попытки подключения незарегистрированных плат) и статистика брокера
         }
         // свои подписки брокера (журнал и обработка) + фильтры переадресации (только пересылка)
         $own = $topics;
@@ -884,7 +938,9 @@ if (function_exists('pcntl_async_signals')) {
     pcntl_signal(SIGINT, function () use (&$stop) { $stop = true; });
 }
 
-$lastSync = $lastTimeout = $lastCleanup = $lastSims = 0.0;
+$lastSync = $lastTimeout = $lastCleanup = $lastSims = $lastStats = 0.0;
+$statsPrev = null;
+$brokerSys = [];
 $started = microtime(true);
 while (!$stop) {
     $now = microtime(true);
@@ -917,6 +973,10 @@ while (!$stop) {
         if ($now - $lastTimeout >= 30 && $now - $started > 60) {
             checkTimeouts();
             $lastTimeout = $now;
+        }
+        if ($now - $lastStats >= 60) {
+            $lastStats = $now;
+            try { statsTick(); } catch (Throwable $e) { writeLog('статистика сервера: ' . $e->getMessage(), 'WARN'); }
         }
         if ($now - $lastCleanup >= 3600) {
             cleanupLogs();

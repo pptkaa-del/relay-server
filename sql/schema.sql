@@ -461,3 +461,31 @@ CREATE TABLE IF NOT EXISTS `api_clients` (
     UNIQUE KEY `uk_name` (`name`),
     UNIQUE KEY `uk_token` (`token_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.44: вкладка «Сервер» — история загрузки сервера (подписчик пишет раз в минуту, хранится 30 дней)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `server_stats` (
+    `ts` DATETIME NOT NULL PRIMARY KEY,
+    `cpu` DECIMAL(5,1) DEFAULT NULL,            -- загрузка процессора за минуту, %
+    `iowait` DECIMAL(5,1) DEFAULT NULL,         -- ожидание диска, %
+    `load1` DECIMAL(7,2) DEFAULT NULL,          -- средняя нагрузка (load average) за 1 минуту
+    `mem_used` BIGINT UNSIGNED DEFAULT NULL,    -- память, занятая программами (без кэша), байт
+    `mem_total` BIGINT UNSIGNED DEFAULT NULL,
+    `swap_used` BIGINT UNSIGNED DEFAULT NULL,
+    `disk_used` BIGINT UNSIGNED DEFAULT NULL,   -- корневой раздел, байт
+    `disk_total` BIGINT UNSIGNED DEFAULT NULL,
+    `net_rx` BIGINT UNSIGNED DEFAULT NULL,      -- сеть, байт/с в среднем за минуту
+    `net_tx` BIGINT UNSIGNED DEFAULT NULL,
+    `mqtt_clients` INT(11) DEFAULT NULL,        -- подключено к брокеру (устройства и сервисы)
+    `mqtt_in` DECIMAL(10,1) DEFAULT NULL,       -- сообщений в минуту, принято брокером
+    `mqtt_out` DECIMAL(10,1) DEFAULT NULL,      -- сообщений в минуту, отправлено брокером
+    `devices_online` INT(11) DEFAULT NULL       -- устройств на связи
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- последние значения брокера ($SYS) и подписчика для вкладки «Сервер»
+CREATE TABLE IF NOT EXISTS `server_state` (
+    `k` VARCHAR(64) NOT NULL PRIMARY KEY,
+    `v` TEXT NOT NULL,
+    `ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
