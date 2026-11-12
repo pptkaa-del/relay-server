@@ -42,6 +42,10 @@ layout_head('Пользователи', 'users', $login);
   </div>
   <p class="muted" style="margin:0;padding:10px 16px 14px;font-size:13px">Адрес API: <span class="mono" id="api-base">…</span> ·
     ключ передаётся в заголовке <span class="mono">Authorization: Bearer &lt;ключ&gt;</span></p>
+  <?php if (empty($_SERVER['HTTPS'])): ?>
+  <p class="api-https-warn">Панель открыта по HTTP — ключи API передаются незашифрованными. Включите бесплатный HTTPS на сервере:
+    <span class="mono">sudo relay-https ДОМЕН ПОЧТА</span> (нужен домен, указывающий на этот сервер).</p>
+  <?php endif; ?>
 </section>
 
 <dialog class="modal" id="api-dlg">

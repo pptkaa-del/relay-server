@@ -1,0 +1,86 @@
+#!/bin/bash
+# HTTPS для панели и API: бесплатный сертификат Let's Encrypt (продлевается автоматически).
+#
+#   sudo relay-https relay.example.ru admin@example.ru   — проверить DNS, получить сертификат, включить HTTPS
+#   sudo relay-https                                     — состояние: домен, срок сертификата, продление
+#   sudo relay-https --renew                             — продлить сейчас (обычно не нужно: certbot.timer)
+#   sudo relay-https --off                               — выключить HTTPS (панель только по HTTP)
+#
+# Нужно доменное имя (например, relay.example.ru), A-запись которого указывает на IP этого сервера,
+# и открытый из интернета порт 80 (по нему Let's Encrypt проверяет домен) и 443.
+# Домен и почта запоминаются: обновления (relay-update) HTTPS не сбрасывают.
+set -euo pipefail
+SRC_DIR="@SRC_DIR@"
+ENV_FILE=/etc/relay-server/install.env
+[ "$(id -u)" -eq 0 ] || { echo "Запускайте через sudo: sudo relay-https $*" >&2; exit 1; }
+
+env_get() { [ -r "$ENV_FILE" ] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 || true; }
+cur=$(env_get DOMAIN)
+
+status() {
+    if [ -z "$cur" ]; then
+        echo "HTTPS выключен: домен не задан."
+        echo "Включить: sudo relay-https ДОМЕН ПОЧТА   (например: sudo relay-https relay.example.ru admin@example.ru)"
+        return
+    fi
+    local crt=/etc/letsencrypt/live/$cur/fullchain.pem
+    echo "Домен: $cur"
+    if [ -s "$crt" ]; then
+        local end; end=$(openssl x509 -enddate -noout -in "$crt" | cut -d= -f2)
+        echo "Сертификат Let's Encrypt действует до: $(date -d "$end" '+%F %T' 2>/dev/null || echo "$end")"
+        if systemctl is-active --quiet certbot.timer 2>/dev/null; then
+            echo "Автоматическое продление: включено (certbot.timer)"
+        else
+            echo "Автоматическое продление: таймер certbot.timer не запущен — sudo systemctl enable --now certbot.timer"
+        fi
+        echo "Панель: https://$cur/   API: https://$cur/api/v1/   MQTT TLS: $cur:8883"
+    else
+        echo "Сертификата ещё нет. Получить: sudo relay-https $cur $(env_get EMAIL)"
+    fi
+}
+
+case "${1:-}" in
+    ""|--status)
+        status; exit 0 ;;
+    --renew)
+        certbot renew --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/relay-mosquitto.sh
+        status; exit 0 ;;
+    --off)
+        echo "Выключаю HTTPS (сертификат остаётся в /etc/letsencrypt, включить снова: sudo relay-https $cur $(env_get EMAIL))"
+        exec bash "$SRC_DIR/install.sh" --no-https ;;
+    -h|--help)
+        sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+DOMAIN=$1
+EMAIL=${2:-$(env_get EMAIL)}
+[[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]] \
+    || { echo "Неверное доменное имя: $DOMAIN (нужно вида relay.example.ru; IP-адрес не подходит)" >&2; exit 1; }
+[[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] \
+    || { echo "Укажите почту для уведомлений Let's Encrypt: sudo relay-https $DOMAIN admin@example.ru" >&2; exit 1; }
+
+# DNS: домен должен указывать на этот сервер
+echo "→ Проверка DNS для $DOMAIN"
+resolved=$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | tr '\n' ' ')
+if [ -z "$resolved" ]; then
+    echo "  Домен $DOMAIN не найден в DNS. Создайте A-запись с IP этого сервера и повторите (DNS обновляется до нескольких часов)." >&2
+    exit 1
+fi
+public=$(curl -4 -s --max-time 8 https://api.ipify.org || true)
+local_ips=$(hostname -I 2>/dev/null || true)
+echo "  $DOMAIN → $resolved"
+match=0
+for ip in $resolved; do
+    for mine in $public $local_ips; do [ "$ip" = "$mine" ] && match=1; done
+done
+if [ "$match" -eq 1 ]; then
+    echo "  OK: домен указывает на этот сервер"
+else
+    echo "  Внимание: IP этого сервера ${public:-(не определён)}, а домен указывает на $resolved."
+    echo "  Если это не NAT/проброс портов, исправьте A-запись — иначе Let's Encrypt не выдаст сертификат."
+    read -r -t 30 -p "  Продолжить всё равно? [y/N] " ans || ans=n
+    [[ "$ans" =~ ^[YyДд] ]] || exit 1
+fi
+
+echo "→ Установка с HTTPS (панель, API и MQTT TLS 8883); пароли и данные сохраняются"
+exec bash "$SRC_DIR/install.sh" --domain "$DOMAIN" --email "$EMAIL"

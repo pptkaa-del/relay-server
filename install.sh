@@ -18,6 +18,9 @@
 #     --domain ИМЯ           доменное имя сервера: включает HTTPS (Let's Encrypt)
 #                            для панели и MQTT over TLS на порту 8883
 #     --email ПОЧТА          e-mail для Let's Encrypt (обязателен вместе с --domain)
+#                            домен и почта запоминаются: повторная установка и relay-update их сохраняют.
+#                            Проще: sudo relay-https ДОМЕН ПОЧТА (проверит DNS и включит HTTPS)
+#     --no-https             выключить HTTPS (забыть домен; сертификат не удаляется)
 #     --tz ЗОНА              часовой пояс                    (по умолчанию Europe/Moscow)
 #     --mqtt-port ПОРТ       порт MQTT без TLS                (по умолчанию 1883 — как в прошивке)
 #     --db-name ИМЯ          имя базы данных                 (по умолчанию u2702672_service_reley_v1)
@@ -37,6 +40,7 @@ ENV_FILE=$CONF_DIR/install.env
 CRED_FILE=/root/relay-server-credentials.txt
 
 ADMIN_USER=admin; ADMIN_PASS=""; DOMAIN=""; EMAIL=""; TZ_NAME=Europe/Moscow
+NO_HTTPS=0
 MQTT_PORT=1883; DB_NAME_ARG=""; RETENTION=14; EV_RETENTION=180; DEVICES=""; FIREWALL=1; REPLACE_XAMPP=0; AUTO_UPDATE=1
 
 log()  { printf '\n\033[1;34m→ %s\033[0m\n' "$*"; }
@@ -52,6 +56,7 @@ while [ $# -gt 0 ]; do
         --admin-pass)    ADMIN_PASS=$2; shift 2 ;;
         --domain)        DOMAIN=$2; shift 2 ;;
         --email)         EMAIL=$2; shift 2 ;;
+        --no-https)      NO_HTTPS=1; shift ;;
         --tz)            TZ_NAME=$2; shift 2 ;;
         --mqtt-port)     MQTT_PORT=$2; shift 2 ;;
         --db-name)       DB_NAME_ARG=$2; shift 2 ;;
@@ -83,7 +88,15 @@ done
 [[ "$EV_RETENTION" =~ ^[0-9]+$ ]] || die "--events-retention: нужно число"
 [ -e "/usr/share/zoneinfo/$TZ_NAME" ] || die "Неизвестный часовой пояс: $TZ_NAME"
 [[ "$ADMIN_USER" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]] || die "--admin-user: латиница, цифры, _ . @ -"
-if [ -n "$DOMAIN" ] && [ -z "$EMAIL" ]; then die "Вместе с --domain укажите --email"; fi
+# домен HTTPS и почта из прошлой установки (relay-update и автообновление запускают install.sh без параметров)
+env_get() { [ -r "$ENV_FILE" ] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 || true; }
+if [ "$NO_HTTPS" -eq 1 ]; then
+    DOMAIN=""; EMAIL=""
+elif [ -z "$DOMAIN" ]; then
+    DOMAIN=$(env_get DOMAIN); EMAIL=${EMAIL:-$(env_get EMAIL)}   # почта могла не сохраниться (установка до v3.43)
+elif [ -z "$EMAIL" ]; then
+    die "Вместе с --domain укажите --email"
+fi
 if [ -n "$DOMAIN" ] && ! [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then die "--domain: неверное имя"; fi
 
 if [ -d /opt/lampp ]; then
@@ -107,8 +120,7 @@ fi
 # ----------------------------------------------------------------------------
 log "Пароли и настройки"
 mkdir -p "$CONF_DIR"; chmod 750 "$CONF_DIR"
-# из прошлой установки берём только пароли и имя БД; остальное — из параметров
-env_get() { [ -r "$ENV_FILE" ] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 || true; }
+# из прошлой установки берём пароли, имя БД, домен HTTPS и почту; остальное — из параметров
 DB_PASS=$(env_get DB_PASS); MQTT_PASS=$(env_get MQTT_PASS); DB_NAME=$(env_get DB_NAME)
 [ -n "$DB_PASS" ] && ok "Использую сохранённые пароли из $ENV_FILE"
 DB_NAME=${DB_NAME_ARG:-${DB_NAME:-u2702672_service_reley_v1}}
@@ -141,6 +153,7 @@ MQTT_USER=$MQTT_USER
 MQTT_PASS=$MQTT_PASS
 MQTT_PORT=$MQTT_PORT
 DOMAIN=$DOMAIN
+EMAIL=$EMAIL
 TZ_NAME=$TZ_NAME
 EOF
 umask 022
@@ -246,6 +259,9 @@ elif sudo -u www-data sudo -n /usr/local/sbin/relay-device-web check >/dev/null 
 else
     warn "Кнопка «Добавить плату» не сможет зарегистрировать плату — используйте sudo relay-device add <ID>"
 fi
+# включение HTTPS одной командой: sudo relay-https ДОМЕН ПОЧТА
+sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-https" > /usr/local/sbin/relay-https.new
+chmod 755 /usr/local/sbin/relay-https.new && mv -f /usr/local/sbin/relay-https.new /usr/local/sbin/relay-https
 # команда обновления из git-репозитория, из которого запущена установка
 if [ -d "$SRC_DIR/.git" ]; then
     sed "s|@SRC_DIR@|$SRC_DIR|" "$SRC_DIR/bin/relay-update" > /usr/local/sbin/relay-update.new
@@ -287,11 +303,14 @@ ok "Скопировано"
 
 # ----------------------------------------------------------------------------
 log "Apache"
-SERVER_NAME_LINE=""; [ -n "$DOMAIN" ] && SERVER_NAME_LINE="ServerName $DOMAIN"
-cat > /etc/apache2/sites-available/relay-server.conf <<EOF
-<VirtualHost *:80>
-    $SERVER_NAME_LINE
-    DocumentRoot $WEB_ROOT
+CERT_DIR=""; [ -n "$DOMAIN" ] && CERT_DIR=/etc/letsencrypt/live/$DOMAIN
+have_cert() { [ -n "$CERT_DIR" ] && [ -s "$CERT_DIR/fullchain.pem" ] && [ -s "$CERT_DIR/privkey.pem" ]; }
+# Сайт панели. Есть сертификат — ещё и HTTPS (443), а браузеры с HTTP переадресуются на HTTPS
+# (только GET/HEAD: POST-запросы старых систем по HTTP продолжают работать; /.well-known — для продления сертификата)
+write_vhost() {
+    local name="" redirect="" ssl="" common
+    [ -n "$DOMAIN" ] && name="ServerName $DOMAIN"
+    common="DocumentRoot $WEB_ROOT
     DirectoryIndex index.php
 
     <Directory $WEB_ROOT>
@@ -301,17 +320,47 @@ cat > /etc/apache2/sites-available/relay-server.conf <<EOF
     </Directory>
 
     # служебные файлы недоступны из браузера
-    <DirectoryMatch "^$WEB_ROOT/(lib|vendor)">
+    <DirectoryMatch \"^$WEB_ROOT/(lib|vendor)\">
         Require all denied
     </DirectoryMatch>
-    <FilesMatch "^(mqtt_subscriber\.php|composer\.(json|lock|phar))$">
+    <FilesMatch \"^(mqtt_subscriber\\.php|composer\\.(json|lock|phar))\$\">
         Require all denied
     </FilesMatch>
 
     ErrorLog \${APACHE_LOG_DIR}/relay-error.log
-    CustomLog \${APACHE_LOG_DIR}/relay-access.log combined
-</VirtualHost>
-EOF
+    CustomLog \${APACHE_LOG_DIR}/relay-access.log combined"
+    if have_cert; then
+        redirect="
+
+    # HTTP → HTTPS
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/\\.well-known/
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)\$
+    RewriteCond %{REMOTE_ADDR} !^127\\.0\\.0\\.1\$
+    RewriteRule ^ https://$DOMAIN%{REQUEST_URI} [R=301,L]"
+        ssl="
+
+<VirtualHost *:443>
+    $name
+    $common
+
+    SSLEngine on
+    SSLCertificateFile $CERT_DIR/fullchain.pem
+    SSLCertificateKeyFile $CERT_DIR/privkey.pem
+    SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+    SSLHonorCipherOrder off
+</VirtualHost>"
+    fi
+    printf '# Создано install.sh (off-on service)\n<VirtualHost *:80>\n    %s\n    %s%s\n</VirtualHost>%s\n' \
+        "$name" "$common" "$redirect" "$ssl" > /etc/apache2/sites-available/relay-server.conf
+}
+# сайт, который раньше создавал «certbot --apache» (теперь HTTPS описан в relay-server.conf)
+if [ -e /etc/apache2/sites-available/relay-server-le-ssl.conf ]; then
+    a2dissite -q relay-server-le-ssl >/dev/null 2>&1 || true
+    rm -f /etc/apache2/sites-available/relay-server-le-ssl.conf
+fi
+a2enmod -q rewrite ssl >/dev/null
+write_vhost
 a2enmod -q php"$PHP_VER" >/dev/null 2>&1 || true
 a2dissite -q 000-default >/dev/null 2>&1 || true
 a2ensite -q relay-server >/dev/null
@@ -330,6 +379,57 @@ apache2ctl configtest >/dev/null 2>&1 || { apache2ctl configtest; die "Ошиб�
 systemctl enable apache2 >/dev/null
 systemctl reload apache2 2>/dev/null || systemctl restart apache2
 ok "Сайт relay-server включён"
+
+# ----------------------------------------------------------------------------
+# HTTPS: бесплатный сертификат Let's Encrypt (на 90 дней, продлевается автоматически таймером certbot).
+# Ошибка выдачи не останавливает установку: панель и брокер продолжают работать по HTTP.
+HTTPS_OK=0
+if [ -n "$DOMAIN" ]; then
+    log "HTTPS: сертификат Let's Encrypt для $DOMAIN"
+    if [ "$FIREWALL" -eq 1 ] && command -v ufw >/dev/null && ufw status | grep -q 'Status: active'; then
+        ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow 8883/tcp >/dev/null
+    fi
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    HOOK=/etc/letsencrypt/renewal-hooks/deploy/relay-mosquitto.sh
+    {
+        echo '#!/bin/sh'
+        echo "# Создано install.sh: после выдачи и продления сертификата $DOMAIN — копия для Mosquitto (MQTT TLS 8883),"
+        echo '# перечитывание Apache и перезапуск брокера'
+        echo 'install -d -m 750 -o root -g mosquitto /etc/mosquitto/certs'
+        echo 'for f in fullchain chain privkey; do'
+        echo "    install -m 640 -o root -g mosquitto /etc/letsencrypt/live/$DOMAIN/\$f.pem /etc/mosquitto/certs/\$f.pem"
+        echo 'done'
+        echo 'systemctl reload apache2 2>/dev/null || true'
+        echo 'systemctl try-restart mosquitto 2>/dev/null || true'
+    } > "$HOOK"
+    chmod 755 "$HOOK"
+    if ! have_cert; then
+        # проверка домена через каталог сайта (/.well-known/acme-challenge) — Apache при этом не перенастраивается
+        if [ -n "$EMAIL" ]; then MAIL_ARGS=(-m "$EMAIL"); else MAIL_ARGS=(--register-unsafely-without-email); fi
+        if certbot certonly --webroot -w "$WEB_ROOT" -d "$DOMAIN" "${MAIL_ARGS[@]}" --agree-tos --non-interactive \
+                --keep-until-expiring --no-eff-email; then
+            ok "Сертификат получен"
+        else
+            warn "Не удалось получить сертификат для $DOMAIN. Проверьте: домен указывает на IP этого сервера (A-запись DNS),
+   порт 80 открыт из интернета. Панель пока работает по HTTP. Повторить: sudo relay-https $DOMAIN $EMAIL"
+        fi
+    fi
+    if have_cert; then
+        HTTPS_OK=1
+        sh "$HOOK" >/dev/null 2>&1 || true
+        write_vhost
+        if apache2ctl configtest >/dev/null 2>&1; then
+            systemctl reload apache2 2>/dev/null || systemctl restart apache2
+            ok "Панель: https://$DOMAIN (HTTP переадресуется на HTTPS)"
+        else
+            apache2ctl configtest || true
+            warn "Ошибка в конфигурации HTTPS — панель остаётся на HTTP"
+            HTTPS_OK=0; CERT_DIR=""; write_vhost
+            systemctl reload apache2 2>/dev/null || systemctl restart apache2
+        fi
+        systemctl enable --now certbot.timer >/dev/null 2>&1 || true   # автоматическое продление
+    fi
+fi
 
 # ----------------------------------------------------------------------------
 log "Mosquitto"
@@ -358,7 +458,7 @@ done < <(grep -v '^[[:space:]]*\(#\|$\)' "$MQTT_USERS")
 chown mosquitto:mosquitto "$PASSWD"; chmod 600 "$PASSWD"
 
 TLS_BLOCK=""
-if [ -n "$DOMAIN" ]; then
+if [ "$HTTPS_OK" -eq 1 ] && [ -s /etc/mosquitto/certs/fullchain.pem ]; then
     TLS_BLOCK="
 # MQTT over TLS (сертификат Let's Encrypt, обновляется автоматически)
 listener 8883
@@ -423,24 +523,6 @@ relay-device sync-accounts || warn "Не удалось проверить уч�
 [ -s /etc/mosquitto/relay.acl ] || die "Файл /etc/mosquitto/relay.acl не создан"
 
 # ----------------------------------------------------------------------------
-if [ -n "$DOMAIN" ]; then
-    log "HTTPS и TLS-сертификат для $DOMAIN"
-    certbot --apache -d "$DOMAIN" -m "$EMAIL" --agree-tos --non-interactive --redirect --keep-until-expiring
-    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-    cat > /etc/letsencrypt/renewal-hooks/deploy/relay-mosquitto.sh <<EOF
-#!/bin/sh
-# Копирует сертификат $DOMAIN для Mosquitto после каждого обновления
-set -e
-install -d -m 750 -o root -g mosquitto /etc/mosquitto/certs
-for f in fullchain chain privkey; do
-    install -m 640 -o root -g mosquitto /etc/letsencrypt/live/$DOMAIN/\$f.pem /etc/mosquitto/certs/\$f.pem
-done
-systemctl restart mosquitto
-EOF
-    chmod 755 /etc/letsencrypt/renewal-hooks/deploy/relay-mosquitto.sh
-    /etc/letsencrypt/renewal-hooks/deploy/relay-mosquitto.sh || true   # итог проверяется ниже
-    ok "Панель: https://$DOMAIN, MQTT TLS: $DOMAIN:8883"
-fi
 
 systemctl enable mosquitto >/dev/null 2>&1
 # Каталог для pid-файла: в части версий пакета (2.0.2x) он задаётся в unit/конфиге,
@@ -486,8 +568,8 @@ fi
 if [ "$FIREWALL" -eq 1 ] && command -v ufw >/dev/null && ufw status | grep -q 'Status: active'; then
     log "Firewall (ufw)"
     ufw allow 80/tcp >/dev/null; ufw allow "$MQTT_PORT"/tcp >/dev/null
-    [ -n "$DOMAIN" ] && { ufw allow 443/tcp >/dev/null; ufw allow 8883/tcp >/dev/null; }
-    ok "Открыты порты 80, $MQTT_PORT${DOMAIN:+, 443, 8883}"
+    [ "$HTTPS_OK" -eq 1 ] && { ufw allow 443/tcp >/dev/null; ufw allow 8883/tcp >/dev/null; }
+    ok "Открыты порты 80, $MQTT_PORT$([ "$HTTPS_OK" -eq 1 ] && echo ', 443, 8883')"
 fi
 
 # ----------------------------------------------------------------------------
@@ -509,9 +591,15 @@ else
 fi
 CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/login.php || true)
 [ "$CODE" = 200 ] && ok "Веб-панель отвечает" || { warn "Веб-панель вернула код $CODE"; FAIL=1; }
+if [ "$HTTPS_OK" -eq 1 ]; then
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/login.php" || true)
+    [ "$CODE" = 200 ] && ok "HTTPS работает: https://$DOMAIN" || { warn "HTTPS вернул код $CODE"; FAIL=1; }
+    END=$(openssl x509 -enddate -noout -in "$CERT_DIR/fullchain.pem" 2>/dev/null | cut -d= -f2)
+    [ -n "$END" ] && ok "Сертификат действует до $(date -d "$END" '+%F' 2>/dev/null || echo "$END"), продление — автоматически"
+fi
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-URL=${DOMAIN:+https://$DOMAIN}; URL=${URL:-http://${IP:-IP_СЕРВЕРА}}
+URL=""; [ "$HTTPS_OK" -eq 1 ] && URL=https://$DOMAIN; URL=${URL:-http://${DOMAIN:-${IP:-IP_СЕРВЕРА}}}
 {
     echo "Сервер управления релейными платами — $(date '+%F %T')"
     echo
@@ -520,7 +608,7 @@ URL=${DOMAIN:+https://$DOMAIN}; URL=${URL:-http://${IP:-IP_СЕРВЕРА}}
     echo "Логин панели:    $ADMIN_USER"
     [ "$NEW_ADMIN" -eq 1 ] && echo "Пароль панели:   $ADMIN_PASS"
     echo
-    echo "MQTT брокер:     ${DOMAIN:-${IP:-IP_СЕРВЕРА}}:$MQTT_PORT${DOMAIN:+ (TLS: $DOMAIN:8883)}"
+    echo "MQTT брокер:     ${DOMAIN:-${IP:-IP_СЕРВЕРА}}:$MQTT_PORT$([ "$HTTPS_OK" -eq 1 ] && echo " (TLS: $DOMAIN:8883)")"
     echo "MQTT сервер:     $MQTT_USER / $MQTT_PASS"
     echo "БД:              $DB_NAME, пользователь $DB_USER / $DB_PASS"
 } > "$CRED_FILE"
@@ -541,6 +629,7 @@ $( [ "$NEW_ADMIN" -eq 1 ] && echo " Пароль:         $ADMIN_PASS" || echo "
  Добавить плату:         sudo relay-device add <ID> "Название" "Адрес"
  Список плат:            sudo relay-device list
  Обновить сервер:        sudo relay-update   (автоматически — раз в 10 минут, journalctl -u relay-update)
+ HTTPS, Let's Encrypt:   sudo relay-https ДОМЕН ПОЧТА   (состояние: sudo relay-https)
  Логи подписчика:        journalctl -u relay-mqtt-subscriber -f
  Логи брокера:           tail -f /var/log/mosquitto/mosquitto.log
  Следить за MQTT:        mosquitto_sub -h 127.0.0.1 -p $MQTT_PORT -u $MQTT_USER -P '<пароль>' -t '#' -v

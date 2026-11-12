@@ -637,3 +637,5 @@ body:not(.role-admin) .admin-only { display: none !important; }
 .api-doc code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 1px 5px; border-radius: 4px; background: var(--idle-soft); }
 .api-doc .doc-tbl { margin: 6px 0 12px; } .api-doc .doc-tbl td, .api-doc .doc-tbl th { vertical-align: top; }
 .api-doc ul { padding-left: 22px; }
+
+.api-https-warn { margin: 0 16px 14px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--text); font-size: 13px; }
