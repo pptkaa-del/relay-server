@@ -126,6 +126,9 @@
         <div class="relay-cards">${relays}</div>
         ${lock}
         ${note ? `<p class="muted" style="margin:12px 0 0;font-size:13px">${note}</p>` : ''}
+        ${d.bat_on ? `<div class="dev-bat"><div class="dev-bat-head"><b>Напряжение АКБ</b>
+          ${d.bat_adc != null ? `<div class="seg">${[[24, '24 ч'], [168, '7 дн']].map(([h, t]) => `<button data-bat-h="${h}" class="${h === batHours ? 'on' : ''}">${t}</button>`).join('')}</div>` : ''}</div>
+          <div id="panel-bat">${batBody(d)}</div></div>` : ''}
         ${d.comments_count ? `<div class="dev-comment">💬 <span class="txt" title="${esc(d.last_comment || '')}">${esc(d.last_comment || '')}</span>
           <a href="/device.php?id=${d.id}#comments-card">все комментарии (${d.comments_count})</a></div>`
           : `<div class="dev-comment"><a href="/device.php?id=${d.id}#comments-card">💬 добавить комментарий</a></div>`}
@@ -182,12 +185,32 @@
       panel.innerHTML = `<div class="card empty"><div><b>Устройство #${selected} не найдено</b></div><p><button class="btn" data-sel="0">Показать все устройства</button></p></div>`;
     } else if (sel) {
       panel.innerHTML = panelHtml(sel);
+      loadBattery(sel);
     } else {
       panel.innerHTML = ''; // без выбора справа карта (map.js)
     }
     // карта (map.js) рисует те же устройства, что и список: с учётом фильтров и поиска.
     // Сообщаем в конце, когда блок карты уже показан или скрыт
     document.dispatchEvent(new CustomEvent('relay:devices', { detail: { list, selected } }));
+  }
+
+  /* ---------- АКБ выбранного устройства: состояние и график сразу в карточке ---------- */
+  let batHours = 24, bat = { key: '', j: null, at: 0 }, batPending = '';
+  try { batHours = +localStorage.getItem('relay-bat-hours') === 168 ? 168 : 24; } catch (e) {}
+  const batKey = d => d.id + ':' + batHours + ':' + (d.bat_adc_ts || 0);
+  // пока грузится свежий график (пришёл новый stat) — показываем прежний того же устройства и периода
+  const batBody = d => App.batteryBlock(d, bat.key.startsWith(d.id + ':' + batHours + ':') ? bat.j : null);
+  async function loadBattery(d) {
+    if (!d || !d.bat_on || d.bat_adc == null) return;
+    const key = batKey(d);
+    if ((bat.key === key && Date.now() - bat.at < 60000) || batPending === key) return; // свежий график или уже загружаем
+    batPending = key;
+    let j = { points: [], calibrated: false };
+    try { j = await api('/api/devices.php', { action: 'battery', id: d.id, hours: batHours }); } catch (e) {}
+    if (batPending === key) batPending = '';
+    bat = { key, j, at: Date.now() };
+    const cur = devices.find(x => x.id === selected), box = $('#panel-bat');
+    if (cur && box && batKey(cur) === key) box.innerHTML = batBody(cur);
   }
 
   async function load() {
@@ -241,6 +264,11 @@
     }
     const s = e.target.closest('[data-sel]');
     if (s) { e.preventDefault(); return select(+s.dataset.sel); }
+    const bh = e.target.closest('[data-bat-h]');
+    if (bh) {
+      batHours = +bh.dataset.batH; try { localStorage.setItem('relay-bat-hours', batHours); } catch (er) {}
+      return render();
+    }
     if (e.target.closest('[data-map-toggle]')) {
       mapOpen = !mapOpen; render();
       if (mapOpen) $('#map-card').scrollIntoView({ block: 'start', behavior: 'smooth' });

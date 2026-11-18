@@ -344,6 +344,11 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 .chart .line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .chart .area { fill: var(--accent-soft); opacity: .7; }
 .chart text { font-size: 10px; fill: var(--muted); font-family: var(--font); }
+/* график АКБ (страница устройства и карточка на главной); .chart — графики вкладки «Сервер» */
+.bat-chart { width: 100%; height: 120px; display: block; margin-top: 12px; }
+.bat-chart .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bat-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.bat-chart .area { fill: var(--accent-soft); stroke: none; opacity: .7; }
 .cal-row { display: flex; gap: 8px; align-items: flex-end; }
 .cal-row .field { flex: 1; }
 .fieldset { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 10px; }
@@ -522,6 +527,9 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
   .split.has-sel .map { height: 45vh; min-height: 260px; }  /* карта над карточкой устройства */
 }
 .map-toggle svg { width: 15px; height: 15px; }
+/* АКБ в карточке выбранного устройства */
+.dev-bat { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.dev-bat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 /* массовое изменение названий реле */
 .role-user #b-bulk { display: none !important; }
 .bulk-preview { font-size: 13px; color: var(--text-2); min-height: 18px; }
