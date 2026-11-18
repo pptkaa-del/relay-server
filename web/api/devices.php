@@ -13,7 +13,7 @@
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — изменение данных устройств:
  *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять);
- *        name, address — только если указано одно устройство (пустое — не менять)
+ *        name, address, coordinates («55.75, 37.61») — только если указано одно устройство (пустое — не менять)
  *   POST action=replace id, new_id   — замена оборудования на адресе: карточка объекта (название, адрес, координаты,
  *        для кого, названия и режимы реле, доступ пользователей, комментарии) переходит на new_id, монтаж new_id —
  *        «смонтировано»; старое устройство — «демонтировано (в ремонт)» без адреса. new_id не в панели — регистрируется
@@ -304,8 +304,12 @@ switch ($action) {
         // название и адрес — только для одного устройства
         $nameNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['name'] ?? ''))), 0, 200);
         $addressNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['address'] ?? ''))), 0, 300);
-        if (($nameNew !== '' || $addressNew !== '') && count($ids) !== 1) {
-            relay_json(['error' => 'Название и адрес можно изменить, только если указано одно устройство'], 400);
+        $coordsNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['coordinates'] ?? ''))), 0, 100);
+        if (($nameNew !== '' || $addressNew !== '' || $coordsNew !== '') && count($ids) !== 1) {
+            relay_json(['error' => 'Название, адрес и координаты можно изменить, только если указано одно устройство'], 400);
+        }
+        if ($coordsNew !== '' && parse_coords($coordsNew) === null) {
+            relay_json(['error' => 'Координаты: широта и долгота через запятую, например 55.75, 37.61'], 400);
         }
         if ($nameNew !== '') {
             $set[] = 'name_obj = ?';
@@ -316,6 +320,11 @@ switch ($action) {
             $set[] = 'address = ?';
             $params[] = $addressNew;
             $names[] = "адрес — «{$addressNew}»";
+        }
+        if ($coordsNew !== '') {
+            $set[] = 'coordinates = ?';
+            $params[] = $coordsNew;
+            $names[] = "координаты — {$coordsNew}";
         }
         $ownerNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200);
         if ($ownerNew !== '') {
@@ -359,7 +368,7 @@ switch ($action) {
             $names[] = ['normal' => 'реле 4 — обычное реле', 'lock' => 'реле 4 — замок двери', 'wash' => 'реле 4 — омывание'][$r4Mode];
         }
         if (!$set && $mountBulk === null) {
-            relay_json(['error' => 'Укажите, что изменить: название, адрес, для кого установлено, названия реле, версию, контроль АКБ, режим реле 4 или монтаж'], 400);
+            relay_json(['error' => 'Укажите, что изменить: название, адрес, координаты, для кого установлено, названия реле, версию, контроль АКБ, режим реле 4 или монтаж'], 400);
         }
         $updated = $missing = [];
         foreach ($ids as $id) {
