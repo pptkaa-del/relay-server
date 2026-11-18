@@ -302,7 +302,7 @@
   const addParam = new URLSearchParams(location.search).get('add');
   if (addParam && /^[1-9]\d{0,9}$/.test(addParam)) { openAdd(addParam); history.replaceState(null, '', '/index.php'); }
 
-  /* ---------- Массовое изменение устройств: названия реле, реле 4 — замок ---------- */
+  /* ---------- Изменение данных устройства: одного или нескольких; для одного — название, адрес, замена оборудования ---------- */
   const bulkDlg = $('#bulk'), bulkForm = $('#bulk-form');
   /** «1, 3, 5-10» → [1, 3, 5, …, 10] или строка ошибки (как relay_parse_id_list на сервере) */
   function parseIds(s) {
@@ -317,8 +317,26 @@
     }
     return [...out].sort((x, y) => x - y);
   }
+  /** одно указанное и найденное устройство — для названия, адреса и замены оборудования */
+  function bulkSingle() {
+    const ids = parseIds(bulkForm.elements.ids.value.trim());
+    return Array.isArray(ids) && ids.length === 1 ? devices.find(d => d.id === ids[0]) || null : null;
+  }
+  function replacePreview() {
+    const box = $('#bulk-replace-preview'), d = bulkSingle(), v = bulkForm.elements.new_id.value.trim();
+    if (!d || !v) { box.textContent = ''; return; }
+    const n = devices.find(x => x.id === +v);
+    box.innerHTML = +v === d.id ? '<span class="bad-text">новый ID совпадает с текущим</span>'
+      : !n ? `#${esc(v)} нет в панели — будет зарегистрировано и получит карточку «${esc(d.name)}»`
+      : n.mount === 'mounted' ? `<span class="bad-text">#${n.id} «${esc(n.name)}» смонтировано на другом объекте — замена невозможна</span>`
+      : `#${n.id} (${App.MOUNT_LABEL[n.mount]}) получит карточку «${esc(d.name)}»; #${d.id} — в ремонт`;
+  }
   function bulkPreview() {
     const box = $('#bulk-preview'), v = bulkForm.elements.ids.value.trim();
+    const single = bulkSingle();
+    $('#bulk-single').classList.toggle('hidden', !single);
+    if (single) { bulkForm.elements.name.placeholder = single.name; bulkForm.elements.address.placeholder = single.address || 'адрес не указан'; }
+    replacePreview();
     if (!v) { box.textContent = ''; return; }
     const ids = parseIds(v);
     if (typeof ids === 'string') { box.innerHTML = `<span class="bad-text">${esc(ids)}</span>`; return; }
@@ -329,14 +347,22 @@
       + (missing.length ? `<div class="muted">нет в панели: ${missing.slice(0, 20).join(', ')}${missing.length > 20 ? ' …' : ''}</div>` : '');
   }
   bulkForm.elements.ids.addEventListener('input', bulkPreview);
-  $('#b-bulk').addEventListener('click', () => {
-    bulkForm.reset(); $('#bulk-preview').textContent = ''; $('#bulk-result').className = 'result'; $('#bulk-result').textContent = '';
-    bulkDlg.showModal(); bulkForm.elements.ids.focus();
-  });
+  bulkForm.elements.new_id.addEventListener('input', replacePreview);
+  function openBulk(id) {
+    bulkForm.reset(); $('#bulk-result').className = 'result'; $('#bulk-result').textContent = '';
+    if (id) bulkForm.elements.ids.value = id;
+    bulkPreview();
+    bulkDlg.showModal(); (id ? bulkForm.elements.name : bulkForm.elements.ids).focus();
+  }
+  // кнопка в шапке: выбрано устройство — сразу оно
+  $('#b-bulk').addEventListener('click', () => openBulk(devices.some(d => d.id === selected) ? selected : 0));
   bulkForm.addEventListener('submit', async e => {
     if (e.submitter && e.submitter.value === 'cancel') return;
     e.preventDefault();
-    const p = { action: 'bulk_relays', ids: bulkForm.elements.ids.value };
+    const single = bulkSingle(), F = k => bulkForm.elements[k];
+    const p = { action: 'bulk_relays', ids: F('ids').value };
+    if (single) { p.name = F('name').value.trim(); p.address = F('address').value.trim(); }
+    const newId = single ? F('new_id').value.trim() : '';
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
     p.relay4_mode = bulkForm.elements.relay4_mode.value;
     p.mount = bulkForm.elements.mount.value;
@@ -345,13 +371,25 @@
     p.bat_monitor = bulkForm.elements.bat_monitor.value;
     p.lock_unused = bulkForm.elements.lock_unused.value;
     const res = $('#bulk-result'), btn = $('#bulk-submit');
+    // что-то кроме замены оборудования: название, адрес, поля «не менять» не пустые
+    const changes = Object.entries(p).some(([k, v]) => !['action', 'ids'].includes(k) && v !== '' && !(k === 'hw_version' && v === 'keep'));
+    if (newId && !confirm(`Заменить оборудование: карточка «${single.name}» перейдёт с #${single.id} на #${newId}, а #${single.id} станет «демонтировано (в ремонт)». Продолжить?`)) return;
     btn.disabled = true;
     try {
-      const j = await api('/api/devices.php', p, true);
-      res.className = 'result ok';
-      res.textContent = `Изменено устройств: ${j.updated.length}` + (j.missing.length ? `. Нет в панели: ${j.missing.join(', ')}` : '');
-      toast(`Изменено устройств: ${j.updated.length}`, 'ok');
-      load().catch(() => {});
+      const msg = [];
+      if (changes || !newId) {
+        const j = await api('/api/devices.php', p, true);
+        msg.push(`Изменено устройств: ${j.updated.length}` + (j.missing.length ? `. Нет в панели: ${j.missing.join(', ')}` : ''));
+      }
+      if (newId) {
+        const j = await api('/api/devices.php', { action: 'replace', id: single.id, new_id: newId }, true);
+        msg.push(`Оборудование заменено: карточка перенесена с #${j.old_id} на #${j.id}` + (j.registered ? ` (устройство #${j.id} зарегистрировано)` : ''));
+        if (selected === j.old_id) select(j.id);
+        F('ids').value = j.id; F('new_id').value = '';
+      }
+      res.className = 'result ok'; res.textContent = msg.join('. ');
+      toast(msg[msg.length - 1], 'ok');
+      await load().catch(() => {}); bulkPreview();
     } catch (er) { res.className = 'result err'; res.textContent = er.message; }
     finally { btn.disabled = false; }
   });

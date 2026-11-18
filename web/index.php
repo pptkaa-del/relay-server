@@ -10,7 +10,7 @@ layout_head('Устройства', 'devices', $login);
     <p id="lastmsg">Загрузка…</p>
   </div>
   <div class="btn-row">
-    <button class="btn" id="b-bulk" title="Изменить сразу несколько устройств: названия реле, реле 4 — замок двери"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Массовое изменение устройств</button>
+    <button class="btn" id="b-bulk" title="Изменить данные одного или сразу нескольких устройств; для одного — название, адрес и замена оборудования (новый ID)"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Изменение данных устройства</button>
     <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить устройство</button>
   </div>
 </div>
@@ -145,12 +145,27 @@ layout_head('Устройства', 'devices', $login);
 
 <dialog class="modal" id="bulk">
   <form method="dialog" id="bulk-form">
-    <div class="modal-head"><h2>Массовое изменение устройств</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
+    <div class="modal-head"><h2>Изменение данных устройства</h2><button class="btn ghost sm" value="cancel" formnovalidate>✕</button></div>
     <div class="modal-body">
       <div class="form-grid">
         <label class="field full">Номера устройств<input class="input mono" name="ids" required autocomplete="off" placeholder="например: 1, 3, 5-10">
-          <span class="hint">через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</span></label>
+          <span class="hint">одно устройство или несколько: через запятую; диапазон — через дефис: 1-10 — устройства с 1 по 10</span></label>
         <div class="full bulk-preview" id="bulk-preview"></div>
+        <div class="full bulk-single hidden" id="bulk-single">
+          <div class="form-grid">
+            <label class="field full">Название объекта<input class="input" name="name" maxlength="200" placeholder="не менять"></label>
+            <label class="field full">Адрес<input class="input" name="address" maxlength="300" placeholder="не менять"></label>
+          </div>
+          <fieldset class="fieldset bulk-replace">
+            <legend>Замена оборудования на адресе</legend>
+            <label class="field">Новый ID устройства<input class="input mono" name="new_id" type="number" min="1" step="1" placeholder="не менять"></label>
+            <p class="hint" style="margin:0">Карточка объекта — название, адрес, координаты, «для кого установлено», названия и режимы реле,
+              доступ пользователей и комментарии — перейдёт на новое устройство (оно станет «смонтировано»).
+              Текущее устройство станет «демонтировано (в ремонт)» без адреса. Журнал, АКБ и калибровка, версия и SIM остаются за своим оборудованием.
+              Нового ID нет в панели — он будет зарегистрирован, как при добавлении.</p>
+            <div class="bulk-preview" id="bulk-replace-preview"></div>
+          </fieldset>
+        </div>
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="не менять"></label>
         <label class="field full">Монтаж<select class="input" name="mount">
           <option value="">не менять</option><option value="mounted">смонтировано</option><option value="not_mounted">не смонтировано</option>

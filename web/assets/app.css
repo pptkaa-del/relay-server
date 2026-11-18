@@ -533,6 +533,8 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
 /* массовое изменение названий реле */
 .role-user #b-bulk { display: none !important; }
 .bulk-preview { font-size: 13px; color: var(--text-2); min-height: 18px; }
+.bulk-single > .form-grid { margin-bottom: 12px; }
+.bulk-replace .bulk-preview:empty { display: none; }
 .bad-text { color: var(--bad); }
 .link-btn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 
