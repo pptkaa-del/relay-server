@@ -123,51 +123,14 @@
       <dt>Первое подключение</dt><dd>${d.created_at ? esc(d.created_at) : '—'}</dd>`;
   }
 
-  /* ---------- АКБ ---------- */
-  function chartSvg(points, calibrated) {
-    const val = p => calibrated ? p[2] : p[1];
-    const pts = points.filter(p => val(p) != null);
-    if (pts.length < 2) return '<p class="muted" style="margin:10px 0 0">Для графика нужно хотя бы два пакета stat с данными АКБ.</p>';
-    const W = 600, H = 120, P = 2;
-    const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 1);
-    let lo = Math.min(...pts.map(val)), hi = Math.max(...pts.map(val));
-    const bt = App.batType(dev);
-    if (calibrated) { lo = Math.min(lo, bt.low); hi = Math.max(hi, bt.high); }
-    if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
-    const x = t => P + (W - P - 4) * (t - t0) / (t1 - t0);
-    const y = v => 6 + (H - 20) * (1 - (v - lo) / (hi - lo));
-    const line = pts.map(p => x(p[0]).toFixed(1) + ',' + y(val(p)).toFixed(1)).join(' ');
-    const area = `${x(t0).toFixed(1)},${y(lo).toFixed(1)} ${line} ${x(t1).toFixed(1)},${y(lo).toFixed(1)}`;
-    const vs = pts.map(val);
-    const f = v => calibrated ? v.toFixed(2) + ' В' : String(Math.round(v));
-    const minV = Math.min(...vs), maxV = Math.max(...vs);
-    // подписи — обычным текстом: SVG растягивается по ширине (preserveAspectRatio="none"), текст в нём исказился бы
-    return `<div class="muted" style="font-size:12px;margin-top:12px">${calibrated ? 'Напряжение' : 'АЦП'}: мин ${f(minV)} · макс ${f(maxV)} · замеров ${pts.length}
-        ${calibrated ? ` · шкала ${bt.low}–${bt.high} В` : ''}</div>
-      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="График напряжения АКБ">
-      <line class="grid" x1="0" x2="${W}" y1="${y(hi)}" y2="${y(hi)}"/><line class="grid" x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}"/>
-      <polygon class="area" points="${area}"/><polyline class="line" points="${line}"/></svg>
-      <div class="bat-scale-labels"><span>${fmtTime(t0)}</span><span>${fmtTime(t1)}</span></div>`;
-  }
+  /* ---------- АКБ: блок общий с карточкой на главной (App.batteryBlock) ---------- */
   async function loadBattery() {
     if (!dev) return;
     const box = $('#battery');
-    if (dev.bat_adc == null) {
-      box.innerHTML = '<p class="muted" style="margin:0">Устройство не передаёт напряжение АКБ. Нужна прошивка v2.2 (протокол v2): в ней stat содержит значение АЦП АКБ.</p>';
-      return;
-    }
+    if (dev.bat_adc == null) { box.innerHTML = App.batteryBlock(dev, null); return; }
     let j = { points: [], calibrated: false };
     try { j = await api('/api/devices.php', { action: 'battery', id, hours: batHours }); } catch (e) {}
-    const v = dev.bat_voltage, bt = App.batType(dev);
-    const pos = v == null ? 0 : Math.max(0, Math.min(100, (v - bt.low) / (bt.high - bt.low) * 100));
-    const head = v != null
-      ? `<div class="bat-big bat ${App.batClass(v, dev)}">${v.toFixed(2)} В <span class="muted bat-type">АКБ ${dev.bat_type} В</span></div>
-         <div class="bat-scale"><i style="left:${pos}%"></i></div>
-         <div class="bat-scale-labels"><span>${bt.low} В</span><span>${String((bt.low + bt.high) / 2).replace('.', ',')} В</span><span>${bt.high} В</span></div>`
-      : `<div class="bat-big bat raw">АЦП ${dev.bat_adc} <span class="muted bat-type">АКБ ${dev.bat_type} В</span></div>
-         <p class="muted" style="margin:6px 0 0">Напряжение не рассчитано: ${dev.can_edit ? `задайте калибровку — «Изменить» → значения АЦП при ${bt.low} В и при ${bt.high} В` : 'калибровку задаёт администратор'}.</p>`;
-    const cal = dev.cal_low != null && dev.cal_high != null ? ` · калибровка: ${dev.cal_low} → ${bt.low} В, ${dev.cal_high} → ${bt.high} В` : '';
-    box.innerHTML = head + `<div class="muted" style="font-size:12.5px;margin-top:8px">АЦП ${dev.bat_adc} · ${fmtTime(dev.bat_adc_ts)}${cal}</div>` + chartSvg(j.points, j.calibrated);
+    box.innerHTML = App.batteryBlock(dev, j);
   }
   $('#bat-range').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;

@@ -157,6 +157,7 @@ const App = (() => {
     download: '<svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
     search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     server: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+    pin: '<svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
     phone: '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>',
     trash: '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
   };
@@ -354,5 +355,47 @@ const App = (() => {
   /** Подпись версии: 11 → «1-1» */
   const verLabel = v => v === 11 ? '1-1' : String(v);
 
-  return { MOUNT_LABEL, bindMount, mountValue, setMount, verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
+  /* Блок «Напряжение АКБ»: текущее значение, шкала, калибровка и график за период (j — ответ action=battery).
+     Общий для страницы устройства и карточки устройства на главной. */
+  function batChartSvg(points, calibrated, dev) {
+    if (!points) return '<p class="muted" style="margin:10px 0 0">Загрузка графика…</p>';
+    const val = p => calibrated ? p[2] : p[1];
+    const pts = points.filter(p => val(p) != null);
+    if (pts.length < 2) return '<p class="muted" style="margin:10px 0 0">Для графика нужно хотя бы два пакета stat с данными АКБ.</p>';
+    const W = 600, H = 120, P = 2;
+    const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 1);
+    let lo = Math.min(...pts.map(val)), hi = Math.max(...pts.map(val));
+    const bt = batType(dev);
+    if (calibrated) { lo = Math.min(lo, bt.low); hi = Math.max(hi, bt.high); }
+    if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
+    const x = t => P + (W - P - 4) * (t - t0) / (t1 - t0);
+    const y = v => 6 + (H - 20) * (1 - (v - lo) / (hi - lo));
+    const line = pts.map(p => x(p[0]).toFixed(1) + ',' + y(val(p)).toFixed(1)).join(' ');
+    const area = `${x(t0).toFixed(1)},${y(lo).toFixed(1)} ${line} ${x(t1).toFixed(1)},${y(lo).toFixed(1)}`;
+    const vs = pts.map(val);
+    const f = v => calibrated ? v.toFixed(2) + ' В' : String(Math.round(v));
+    const minV = Math.min(...vs), maxV = Math.max(...vs);
+    // подписи — обычным текстом: SVG растягивается по ширине (preserveAspectRatio="none"), текст в нём исказился бы
+    return `<div class="muted" style="font-size:12px;margin-top:12px">${calibrated ? 'Напряжение' : 'АЦП'}: мин ${f(minV)} · макс ${f(maxV)} · замеров ${pts.length}
+        ${calibrated ? ` · шкала ${bt.low}–${bt.high} В` : ''}</div>
+      <svg class="bat-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="График напряжения АКБ">
+      <line class="grid" x1="0" x2="${W}" y1="${y(hi)}" y2="${y(hi)}"/><line class="grid" x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}"/>
+      <polygon class="area" points="${area}"/><polyline class="line" points="${line}"/></svg>
+      <div class="bat-scale-labels"><span>${fmtTime(t0)}</span><span>${fmtTime(t1)}</span></div>`;
+  }
+  function batteryBlock(dev, j) {
+    if (dev.bat_adc == null) return '<p class="muted" style="margin:0">Устройство не передаёт напряжение АКБ. Нужна прошивка v2.2 (протокол v2): в ней stat содержит значение АЦП АКБ.</p>';
+    const v = dev.bat_voltage, bt = batType(dev);
+    const pos = v == null ? 0 : Math.max(0, Math.min(100, (v - bt.low) / (bt.high - bt.low) * 100));
+    const head = v != null
+      ? `<div class="bat-big bat ${batClass(v, dev)}">${v.toFixed(2)} В <span class="muted bat-type">АКБ ${dev.bat_type} В</span></div>
+         <div class="bat-scale"><i style="left:${pos}%"></i></div>
+         <div class="bat-scale-labels"><span>${bt.low} В</span><span>${String((bt.low + bt.high) / 2).replace('.', ',')} В</span><span>${bt.high} В</span></div>`
+      : `<div class="bat-big bat raw">АЦП ${dev.bat_adc} <span class="muted bat-type">АКБ ${dev.bat_type} В</span></div>
+         <p class="muted" style="margin:6px 0 0">Напряжение не рассчитано: ${dev.can_edit ? `задайте калибровку — «Изменить» → значения АЦП при ${bt.low} В и при ${bt.high} В` : 'калибровку задаёт администратор'}.</p>`;
+    const cal = dev.cal_low != null && dev.cal_high != null ? ` · калибровка: ${dev.cal_low} → ${bt.low} В, ${dev.cal_high} → ${bt.high} В` : '';
+    return head + `<div class="muted" style="font-size:12.5px;margin-top:8px">АЦП ${dev.bat_adc} · ${fmtTime(dev.bat_adc_ts)}${cal}</div>` + batChartSvg(j ? j.points : null, j ? j.calibrated : false, dev);
+  }
+
+  return { MOUNT_LABEL, bindMount, mountValue, setMount, verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batteryBlock, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
 })();
