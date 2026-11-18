@@ -9,7 +9,7 @@
  *   POST action=add id, name, address, relay1..relay4 — зарегистрировать новую плату (брокер + панель)
  *   GET  ?action=pending              — платы, которые пытались подключиться, но не зарегистрированы
  *   POST action=pending_ignore id     — скрыть такую плату из списка
- *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
+ *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ: points [время, АЦП, В | null, [реле 1..4]] по пакетам stat
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — изменение данных устройств:
  *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять);
@@ -535,14 +535,17 @@ switch ($action) {
         $cal = ['lo' => $g[$bt['col_low']] ?? null, 'hi' => $g[$bt['col_high']] ?? null];
         $field = (int)($g['dev_version'] ?? 0) === RELAY_V11 ? '$.sl' : '$.bat_adc'; // версия 1-1: АЦП АКБ в поле сигнала
         $rows = relay_rows(relay_q($connect,
-            "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$field') AS UNSIGNED) AS adc
+            "SELECT UNIX_TIMESTAMP(ts) AS t, CAST(JSON_VALUE(decoded, '$field') AS UNSIGNED) AS adc,
+                    JSON_VALUE(decoded, '$.r1') AS r1, JSON_VALUE(decoded, '$.r2') AS r2,
+                    JSON_VALUE(decoded, '$.r3') AS r3, JSON_VALUE(decoded, '$.r4') AS r4
                FROM mqtt_messages
               WHERE broker_id = 1 AND device_id = ? AND topic = 'stat' AND direction = 'in'
                 AND ts > NOW() - INTERVAL ? HOUR AND JSON_VALUE(decoded, '$field') IS NOT NULL
               ORDER BY id", [$id, $hours]));
         $points = [];
         foreach ($rows as $r) {
-            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['lo'], $cal['hi'], $batType)];
+            $points[] = [(int)$r['t'], (int)$r['adc'], relay_battery_voltage((int)$r['adc'], $cal['lo'], $cal['hi'], $batType),
+                         array_map(fn($k) => $r[$k] === null ? null : (int)$r[$k], ['r1', 'r2', 'r3', 'r4'])]; // состояния реле в этом stat
         }
         relay_json(['points' => $points, 'calibrated' => isset($cal['lo'], $cal['hi']), 'hours' => $hours,
                     'bat_type' => $batType, 'v_low' => $bt['low'], 'v_high' => $bt['high']]);
