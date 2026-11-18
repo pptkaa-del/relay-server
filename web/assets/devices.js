@@ -17,7 +17,8 @@
     let list = devices.filter(d => {
       if (userFilter && !userAccess[userFilter]?.[d.id]) return false;
       if (filter === 'online' && !d.online) return false;
-      if (filter === 'offline' && (d.online || d.state === 'never' || d.state === 'power_off' || d.mount !== 'mounted')) return false;
+      // «не на связи»: без не смонтированных и демонтированных (в ремонт) — как в плитке
+      if (filter === 'offline' && (d.online || d.mount !== 'mounted' || d.state === 'never' || d.state === 'power_off')) return false;
       if (filter === 'batlow' && !(d.online && d.bat_low)) return false;
       if (filter === 'poweroff' && d.state !== 'power_off') return false;
       if (filter === 'alloff' && !d.all_off) return false;
