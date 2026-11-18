@@ -155,6 +155,8 @@ layout_head('Устройства', 'devices', $login);
           <div class="form-grid">
             <label class="field full">Название объекта<input class="input" name="name" maxlength="200" placeholder="не менять"></label>
             <label class="field full">Адрес<input class="input" name="address" maxlength="300" placeholder="не менять"></label>
+            <label class="field full">Координаты<input class="input mono" name="coordinates" maxlength="100" autocomplete="off" placeholder="не менять">
+              <span class="hint">широта и долгота через запятую, например 55.75, 37.61 — так их можно скопировать из Яндекс или Google Карт</span></label>
           </div>
           <fieldset class="fieldset bulk-replace">
             <legend>Замена оборудования на адресе</legend>
@@ -169,7 +171,8 @@ layout_head('Устройства', 'devices', $login);
         <label class="field full">Для кого установлено<input class="input" name="owner" maxlength="200" placeholder="не менять"></label>
         <label class="field full">Монтаж<select class="input" name="mount">
           <option value="">не менять</option><option value="mounted">смонтировано</option><option value="not_mounted">не смонтировано</option>
-          <option value="repair">демонтировано (в ремонт)</option></select></label>
+          <option value="repair">демонтировано (в ремонт)</option></select>
+          <span class="hint hidden" id="bulk-mount-auto">выбрано «смонтировано», потому что указаны координаты — снимется отметка «не смонтировано» / «в ремонте»</span></label>
         <label class="field">Реле 1<input class="input" name="relay1" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 2<input class="input" name="relay2" maxlength="60" placeholder="не менять"></label>
         <label class="field">Реле 3<input class="input" name="relay3" maxlength="60" placeholder="не менять"></label>

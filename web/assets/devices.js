@@ -335,7 +335,11 @@
     const box = $('#bulk-preview'), v = bulkForm.elements.ids.value.trim();
     const single = bulkSingle();
     $('#bulk-single').classList.toggle('hidden', !single);
-    if (single) { bulkForm.elements.name.placeholder = single.name; bulkForm.elements.address.placeholder = single.address || 'адрес не указан'; }
+    if (!single) bulkForm.elements.coordinates.setCustomValidity(''); // скрытое поле не должно мешать отправке
+    if (single) {
+      bulkForm.elements.name.placeholder = single.name; bulkForm.elements.address.placeholder = single.address || 'адрес не указан';
+      bulkForm.elements.coordinates.placeholder = single.coordinates || 'не указаны, например 55.75, 37.61';
+    }
     replacePreview();
     if (!v) { box.textContent = ''; return; }
     const ids = parseIds(v);
@@ -349,11 +353,26 @@
   bulkForm.elements.ids.addEventListener('input', bulkPreview);
   bulkForm.elements.new_id.addEventListener('input', replacePreview);
   function openBulk(id) {
-    bulkForm.reset(); $('#bulk-result').className = 'result'; $('#bulk-result').textContent = '';
+    bulkForm.reset(); bulkForm.elements.coordinates.setCustomValidity(''); delete bulkForm.elements.mount.dataset.auto; $('#bulk-mount-auto').classList.add('hidden'); $('#bulk-result').className = 'result'; $('#bulk-result').textContent = '';
     if (id) bulkForm.elements.ids.value = id;
     bulkPreview();
     bulkDlg.showModal(); (id ? bulkForm.elements.name : bulkForm.elements.ids).focus();
   }
+  // координаты: проверка формата прямо в поле (как parse_coords на сервере)
+  bulkForm.elements.coordinates.addEventListener('input', e => {
+    let s = e.target.value.trim();
+    if (s.includes(';') || /^-?\d+,\d+\s+-?\d+,\d+$/.test(s)) s = s.replace(/,/g, '.');
+    const m = s.match(/-?\d+(?:\.\d+)?/g), ok = !s || (m && m.length === 2 && Math.abs(+m[0]) <= 90 && Math.abs(+m[1]) <= 180 && !(+m[0] === 0 && +m[1] === 0));
+    e.target.setCustomValidity(ok ? '' : 'Широта и долгота через запятую, например 55.75, 37.61');
+    // координаты у не смонтированного / в ремонте — значит, устройство на объекте: монтаж «смонтировано»
+    // (выбор виден в поле «Монтаж», его можно изменить до сохранения)
+    const d = bulkSingle(), mount = bulkForm.elements.mount;
+    if (d && d.mount !== 'mounted' && s && ok && mount.value === '') { mount.value = 'mounted'; mount.dataset.auto = '1'; }
+    else if (!s && mount.dataset.auto) { mount.value = ''; }
+    if (mount.value !== 'mounted' || !s) delete mount.dataset.auto;
+    $('#bulk-mount-auto').classList.toggle('hidden', !mount.dataset.auto);
+  });
+  bulkForm.elements.mount.addEventListener('change', e => { delete e.target.dataset.auto; $('#bulk-mount-auto').classList.add('hidden'); });
   // кнопка в шапке: выбрано устройство — сразу оно
   $('#b-bulk').addEventListener('click', () => openBulk(devices.some(d => d.id === selected) ? selected : 0));
   bulkForm.addEventListener('submit', async e => {
@@ -361,7 +380,7 @@
     e.preventDefault();
     const single = bulkSingle(), F = k => bulkForm.elements[k];
     const p = { action: 'bulk_relays', ids: F('ids').value };
-    if (single) { p.name = F('name').value.trim(); p.address = F('address').value.trim(); }
+    if (single) { p.name = F('name').value.trim(); p.address = F('address').value.trim(); p.coordinates = F('coordinates').value.trim(); }
     const newId = single ? F('new_id').value.trim() : '';
     for (const i of [1, 2, 3, 4]) p['relay' + i] = bulkForm.elements['relay' + i].value.trim();
     p.relay4_mode = bulkForm.elements.relay4_mode.value;
