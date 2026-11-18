@@ -349,6 +349,19 @@ dialog.modal::backdrop { background: rgba(10, 15, 30, .45); }
 .bat-chart .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .bat-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .bat-chart .area { fill: var(--accent-soft); stroke: none; opacity: .7; }
+/* подсказка при наведении на график АКБ и таблица по пакетам stat */
+.bat-stats { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.bat-chart-wrap { position: relative; touch-action: pan-y; cursor: crosshair; }
+.bat-chart-wrap .bat-chart { margin-top: 6px; }
+.bat-x { position: absolute; top: 6px; bottom: 0; width: 1px; margin-left: -.5px; background: var(--line-strong, var(--line)); pointer-events: none; }
+.bat-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); pointer-events: none; transform: translateY(6px); }
+.bat-tip { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); z-index: 5; pointer-events: none; min-width: 150px; padding: 7px 10px;
+           border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0,0,0,.14); font-size: 12.5px; line-height: 1.45; white-space: nowrap; }
+.bat-tip b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.bat-tip-rel { display: grid; margin-top: 3px; color: var(--text-2); }
+.bat-table { max-height: 360px; margin-top: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.bat-table td.mono { font-variant-numeric: tabular-nums; }
+.rs-1 { color: var(--ok); } .rs-2 { color: var(--bad); } .rs-na { color: var(--muted); }
 .cal-row { display: flex; gap: 8px; align-items: flex-end; }
 .cal-row .field { flex: 1; }
 .fieldset { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 10px; }

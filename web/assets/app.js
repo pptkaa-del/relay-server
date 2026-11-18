@@ -357,6 +357,11 @@ const App = (() => {
 
   /* Блок «Напряжение АКБ»: текущее значение, шкала, калибровка и график за период (j — ответ action=battery).
      Общий для страницы устройства и карточки устройства на главной. */
+  /* Состояние реле в пакете stat: реле 4 — замок — «дверь закрыта / открыта» */
+  const batLock4 = dev => (dev.relays || []).some(r => r.num === 4 && r.lock);
+  const batRelayText = (lock4, n, v) => v == null ? '—' : n === 4 && lock4 ? (LOCK4_STATE[v] ?? v) : (RSTATE[v] ?? v);
+  const batRelayName = (dev, n) => (dev.relay_names && dev.relay_names[n]) || 'Реле ' + n;
+  let batTableOpen = false; // таблица под графиком АКБ открыта (сохраняется при перерисовке)
   function batChartSvg(points, calibrated, dev) {
     if (!points) return '<p class="muted" style="margin:10px 0 0">Загрузка графика…</p>';
     const val = p => calibrated ? p[2] : p[1];
@@ -375,14 +380,65 @@ const App = (() => {
     const vs = pts.map(val);
     const f = v => calibrated ? v.toFixed(2) + ' В' : String(Math.round(v));
     const minV = Math.min(...vs), maxV = Math.max(...vs);
+    // для подсказки при наведении: доли по ширине и высоте, значение, реле
+    const hover = pts.map(p => [+((x(p[0]) / W).toFixed(4)), +((y(val(p)) / H).toFixed(4)), p[0], val(p), p[3] || null]);
+    const lock4 = batLock4(dev), names = [1, 2, 3, 4].map(n => batRelayName(dev, n));
+    const rows = pts.slice().reverse().map(p => `<tr><td class="nowrap">${fmtTime(p[0])}</td><td class="nowrap mono">${f(val(p))}</td>`
+      + [1, 2, 3, 4].map(n => { const v = p[3] ? p[3][n - 1] : null;
+        return `<td class="nowrap"><span class="rs rs-${v == null ? 'na' : v}">${batRelayText(lock4, n, v)}</span></td>`; }).join('') + '</tr>').join('');
     // подписи — обычным текстом: SVG растягивается по ширине (preserveAspectRatio="none"), текст в нём исказился бы
-    return `<div class="muted" style="font-size:12px;margin-top:12px">${calibrated ? 'Напряжение' : 'АЦП'}: мин ${f(minV)} · макс ${f(maxV)} · замеров ${pts.length}
-        ${calibrated ? ` · шкала ${bt.low}–${bt.high} В` : ''}</div>
-      <svg class="bat-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="График напряжения АКБ">
-      <line class="grid" x1="0" x2="${W}" y1="${y(hi)}" y2="${y(hi)}"/><line class="grid" x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}"/>
-      <polygon class="area" points="${area}"/><polyline class="line" points="${line}"/></svg>
-      <div class="bat-scale-labels"><span>${fmtTime(t0)}</span><span>${fmtTime(t1)}</span></div>`;
+    return `<div class="bat-stats"><span class="muted" style="font-size:12px">${calibrated ? 'Напряжение' : 'АЦП'}: мин ${f(minV)} · макс ${f(maxV)} · замеров ${pts.length}
+        ${calibrated ? ` · шкала ${bt.low}–${bt.high} В` : ''}</span>
+        <button type="button" class="btn sm bat-table-btn" data-bat-table title="Время данных, напряжение АКБ и состояния реле по каждому пакету stat">${batTableOpen ? 'Скрыть таблицу' : 'Таблица'}</button></div>
+      <div class="bat-chart-wrap" data-bat-hover="${esc(JSON.stringify({ c: calibrated, l: lock4, n: names, p: hover }))}">
+        <svg class="bat-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="График напряжения АКБ">
+        <line class="grid" x1="0" x2="${W}" y1="${y(hi)}" y2="${y(hi)}"/><line class="grid" x1="0" x2="${W}" y1="${y(lo)}" y2="${y(lo)}"/>
+        <polygon class="area" points="${area}"/><polyline class="line" points="${line}"/></svg>
+        <i class="bat-x hidden"></i><i class="bat-dot hidden"></i><div class="bat-tip hidden"></div></div>
+      <div class="bat-scale-labels"><span>${fmtTime(t0)}</span><span>${fmtTime(t1)}</span></div>
+      <div class="table-wrap bat-table${batTableOpen ? '' : ' hidden'}"><table class="tbl">
+        <thead><tr><th>Время данных</th><th>${calibrated ? 'Напряжение АКБ' : 'АЦП АКБ'}</th>${[1, 2, 3, 4].map(n => `<th>${esc(batRelayName(dev, n))}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
   }
+  // подсказка при наведении (мышь или палец) и кнопка «Таблица» — для всех блоков АКБ на странице
+  function batHover(e) {
+    const w = e.target.closest && e.target.closest('[data-bat-hover]');
+    if (!w) return;
+    let data = w._bat;
+    if (!data) { try { data = w._bat = JSON.parse(w.dataset.batHover); } catch (er) { return; } }
+    const r = w.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+    let best = data.p[0];
+    for (const p of data.p) if (Math.abs(p[0] - fx) < Math.abs(best[0] - fx)) best = p;
+    const [px, py, t, v, rel] = best, tip = w.querySelector('.bat-tip'), dot = w.querySelector('.bat-dot'), xl = w.querySelector('.bat-x');
+    tip.innerHTML = `<div class="muted">${fmtTime(t)}</div><b>${data.c ? v.toFixed(2) + ' В' : 'АЦП ' + Math.round(v)}</b>`
+      + (rel ? '<div class="bat-tip-rel">' + rel.map((s, i) => `<span>${esc(data.n[i])}: ${batRelayText(data.l, i + 1, s)}</span>`).join('') + '</div>' : '');
+    xl.style.left = dot.style.left = (px * 100) + '%';
+    dot.style.top = (py * 100) + '%';
+    [tip, dot, xl].forEach(el => el.classList.remove('hidden'));
+    const half = tip.offsetWidth / 2; // не выходить за края графика
+    tip.style.left = Math.min(Math.max(px * r.width, half), Math.max(half, r.width - half)) + 'px';
+  }
+  const batHide = w => w.querySelectorAll('.bat-tip, .bat-dot, .bat-x').forEach(el => el.classList.add('hidden'));
+  function batHoverOut(e) {
+    if (e.pointerType === 'touch') return; // палец: подсказка остаётся до касания в другом месте
+    const w = e.target.closest && e.target.closest('[data-bat-hover]');
+    if (w && !w.contains(e.relatedTarget)) batHide(w);
+  }
+  document.addEventListener('pointermove', batHover);
+  document.addEventListener('pointerdown', e => {
+    const w = e.target.closest && e.target.closest('[data-bat-hover]');
+    document.querySelectorAll('[data-bat-hover]').forEach(x => { if (x !== w) batHide(x); });
+    batHover(e);
+  });
+  document.addEventListener('pointerout', batHoverOut);
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-bat-table]');
+    if (!b) return;
+    batTableOpen = !batTableOpen;
+    const box = b.closest('.bat-block') || document;
+    box.querySelectorAll('.bat-table').forEach(t => t.classList.toggle('hidden', !batTableOpen));
+    b.textContent = batTableOpen ? 'Скрыть таблицу' : 'Таблица';
+  });
   function batteryBlock(dev, j) {
     if (dev.bat_adc == null) return '<p class="muted" style="margin:0">Устройство не передаёт напряжение АКБ. Нужна прошивка v2.2 (протокол v2): в ней stat содержит значение АЦП АКБ.</p>';
     const v = dev.bat_voltage, bt = batType(dev);
@@ -394,7 +450,8 @@ const App = (() => {
       : `<div class="bat-big bat raw">АЦП ${dev.bat_adc} <span class="muted bat-type">АКБ ${dev.bat_type} В</span></div>
          <p class="muted" style="margin:6px 0 0">Напряжение не рассчитано: ${dev.can_edit ? `задайте калибровку — «Изменить» → значения АЦП при ${bt.low} В и при ${bt.high} В` : 'калибровку задаёт администратор'}.</p>`;
     const cal = dev.cal_low != null && dev.cal_high != null ? ` · калибровка: ${dev.cal_low} → ${bt.low} В, ${dev.cal_high} → ${bt.high} В` : '';
-    return head + `<div class="muted" style="font-size:12.5px;margin-top:8px">АЦП ${dev.bat_adc} · ${fmtTime(dev.bat_adc_ts)}${cal}</div>` + batChartSvg(j ? j.points : null, j ? j.calibrated : false, dev);
+    return `<div class="bat-block" data-bat-dev="${dev.id}">` + head + `<div class="muted" style="font-size:12.5px;margin-top:8px">АЦП ${dev.bat_adc} · ${fmtTime(dev.bat_adc_ts)}${cal}</div>`
+      + batChartSvg(j ? j.points : null, j ? j.calibrated : false, dev) + '</div>';
   }
 
   return { MOUNT_LABEL, bindMount, mountValue, setMount, verLabel, mqttBlockDialog, mqttUnblock, mqttBlockBanner, bindHwVersion, fmtPhone, logLimit, bindLogLimit, bindBatType, BAT_TYPES, batType, LOCK4_CMD, LOCK4_STATE, BAT_V_LOW, BAT_V_HIGH, batteryHtml, batteryBlock, batClass, cmdStatusBadge, $, $$, esc, api, fmtTime, ago, parseTs, stateBadge, signalBars, ICONS, toast, describe, RSTATE, CMD, cmdLabel, sendCommand, every };
