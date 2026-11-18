@@ -86,7 +86,7 @@
     note.textContent = noGeo.length ? `Без координат: ${noGeo.length} — собраны в кластер в точке 55.00, 37.00. Координаты задаются в «Изменить» → «Координаты».` : '';
     const any = geo.length || noGeo.length;
     $('#map').classList.toggle('hidden', !any);
-    if (!any || card.classList.contains('hidden')) { shown = false; return; }
+    if (!any || card.classList.contains('hidden')) { shown = false; lastSel = 0; return; } // снова показали — центр на выбранном
     ensureMap();
     if (!shown) { shown = true; setTimeout(() => map.invalidateSize(), 0); } // карта снова видна (вернулись из устройства)
 
@@ -129,10 +129,10 @@
       const pts = geo.map(d => d.geo).concat(noGeo.length ? [CLUSTER] : []);
       pts.length === 1 ? map.setView(pts[0], geo.length ? 15 : 10) : map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 16 });
     }
-    // выбрано устройство — показываем его на карте
+    // выбрано устройство — показываем его на карте (карта над карточкой устройства — по кнопке «Показать на карте»)
     if (selected && selected !== lastSel) {
       const d = geo.find(x => x.id === selected);
-      if (d) map.panTo(d.geo);
+      if (d) map.setView(d.geo, Math.max(map.getZoom(), 15));
     }
     lastSel = selected;
   }

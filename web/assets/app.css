@@ -518,7 +518,10 @@ dialog.modal > form > .modal-body { flex: 1 1 auto; min-height: 0; }
   .split .split-main { order: 1; }
   .split-side { position: static; }
   .split-main .map { height: 60vh; min-height: 320px; }
+  .split.has-sel .map-card { margin-bottom: 16px; scroll-margin-top: 76px; }  /* прокрутка к карте — не под шапку */
+  .split.has-sel .map { height: 45vh; min-height: 260px; }  /* карта над карточкой устройства */
 }
+.map-toggle svg { width: 15px; height: 15px; }
 /* массовое изменение названий реле */
 .role-user #b-bulk { display: none !important; }
 .bulk-preview { font-size: 13px; color: var(--text-2); min-height: 18px; }

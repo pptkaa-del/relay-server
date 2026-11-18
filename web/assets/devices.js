@@ -35,13 +35,14 @@
   /* ---------- Выбор платы: /index.php#9 — плата 9, без номера — сводка всех реле ---------- */
   const selFromHash = () => { const m = /^#(\d{1,10})$/.exec(location.hash); return m ? +m[1] : 0; };
   let selected = selFromHash();
+  let mapOpen = false; // карта над карточкой выбранного устройства (кнопка «Показать на карте» на телефоне)
   function select(id) {
-    selected = id;
+    selected = id; mapOpen = false;
     history.replaceState(null, '', id ? '#' + id : location.pathname + location.search);
     render();
     if (id && matchMedia('(max-width: 1100px)').matches) $('#panel').scrollIntoView({ block: 'start' });
   }
-  window.addEventListener('hashchange', () => { selected = selFromHash(); render(); });
+  window.addEventListener('hashchange', () => { selected = selFromHash(); mapOpen = false; render(); });
 
   // реле 4 — замок: включено — дверь закрыта (зелёный), выключено — открыта (жёлтый)
   const relayBadge = (st, lock = false) => st == null ? '<span class="badge">нет данных</span>'
@@ -116,6 +117,7 @@
         <button class="btn sm ghost" data-sel="0" title="Вернуться к карте">← Карта</button>
         <div class="dev-panel-title"><h2><a href="/device.php?id=${d.id}">${esc(d.name)}</a></h2><div class="muted">${esc(d.address || 'адрес не указан')}${d.owner ? ' · <span class="owner">' + esc(d.owner) + '</span>' : ''}</div></div>
         ${stateBadge(d.state)}
+        ${d.geo ? `<button class="btn sm only-narrow map-toggle" data-map-toggle>${ICONS.pin}${mapOpen ? 'Скрыть карту' : 'Показать на карте'}</button>` : ''}
       </div>
       <div class="card-body">
         ${breakBanner(d)}
@@ -164,8 +166,9 @@
     const list = visible();
     const sel = selected ? devices.find(d => d.id === selected) : null;
     $('#split').classList.toggle('has-sel', !!sel);
-    // карта — когда устройство не выбрано и устройства есть
-    $('#map-card').classList.toggle('hidden', !!sel || !devices.length || (selected && !sel));
+    // карта — когда устройство не выбрано и устройства есть; у выбранного — по кнопке «Показать на карте»
+    if (sel && !sel.geo) mapOpen = false;
+    $('#map-card').classList.toggle('hidden', (!!sel && !mapOpen) || !devices.length || (selected && !sel));
     $('.side-all').classList.toggle('sel', !sel);
     $('#side-count').textContent = devices.length;
     $('#side').innerHTML = list.length ? list.map(sideHtml).join('')
@@ -238,6 +241,11 @@
     }
     const s = e.target.closest('[data-sel]');
     if (s) { e.preventDefault(); return select(+s.dataset.sel); }
+    if (e.target.closest('[data-map-toggle]')) {
+      mapOpen = !mapOpen; render();
+      if (mapOpen) $('#map-card').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
     const sw = e.target.closest('.switch');
     if (sw) {
       if (sw.disabled || sw.classList.contains('busy')) return;
