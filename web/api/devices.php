@@ -11,8 +11,13 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
- *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — массовое изменение устройств:
- *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять)
+ *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — изменение данных устройств:
+ *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять);
+ *        name, address — только если указано одно устройство (пустое — не менять)
+ *   POST action=replace id, new_id   — замена оборудования на адресе: карточка объекта (название, адрес, координаты,
+ *        для кого, названия и режимы реле, доступ пользователей, комментарии) переходит на new_id, монтаж new_id —
+ *        «смонтировано»; старое устройство — «демонтировано (в ремонт)» без адреса. new_id не в панели — регистрируется
+ *        в брокере, как при добавлении. Журнал, АКБ и калибровка, версия, SIM остаются за своим оборудованием.
  *   POST action=mqtt_block id, minutes (0 — до отмены) — не принимать сообщения от устройства (версия 1 перезагрузится)
  *   POST action=mqtt_unblock id       — снова принимать сообщения
  *   POST action=ack_break_in id       — сбросить тревогу «взлом двери» (администратор или управляющий замком)
@@ -29,10 +34,10 @@ require __DIR__ . '/../conectbd.php';
 require __DIR__ . '/../lib/devices.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays', 'mqtt_block', 'mqtt_unblock'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays', 'replace', 'mqtt_block', 'mqtt_unblock'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
-if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays', 'export_repair'], true) && !relay_is_admin()) {
+if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays', 'replace', 'export_repair'], true) && !relay_is_admin()) {
     relay_forbidden('Добавлять устройства и изменять их данные может только администратор');
 }
 
@@ -296,6 +301,22 @@ switch ($action) {
                 $names[] = "реле $i — «{$v}»";
             }
         }
+        // название и адрес — только для одного устройства
+        $nameNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['name'] ?? ''))), 0, 200);
+        $addressNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['address'] ?? ''))), 0, 300);
+        if (($nameNew !== '' || $addressNew !== '') && count($ids) !== 1) {
+            relay_json(['error' => 'Название и адрес можно изменить, только если указано одно устройство'], 400);
+        }
+        if ($nameNew !== '') {
+            $set[] = 'name_obj = ?';
+            $params[] = $nameNew;
+            $names[] = "название — «{$nameNew}»";
+        }
+        if ($addressNew !== '') {
+            $set[] = 'address = ?';
+            $params[] = $addressNew;
+            $names[] = "адрес — «{$addressNew}»";
+        }
         $ownerNew = mb_substr(trim(str_replace(["\r", "\n", "\0"], ' ', (string)($_POST['owner'] ?? ''))), 0, 200);
         if ($ownerNew !== '') {
             $set[] = 'owner = ?';
@@ -338,7 +359,7 @@ switch ($action) {
             $names[] = ['normal' => 'реле 4 — обычное реле', 'lock' => 'реле 4 — замок двери', 'wash' => 'реле 4 — омывание'][$r4Mode];
         }
         if (!$set && $mountBulk === null) {
-            relay_json(['error' => 'Укажите, что изменить: для кого установлено, названия реле, версию, контроль АКБ, режим реле 4 или монтаж'], 400);
+            relay_json(['error' => 'Укажите, что изменить: название, адрес, для кого установлено, названия реле, версию, контроль АКБ, режим реле 4 или монтаж'], 400);
         }
         $updated = $missing = [];
         foreach ($ids as $id) {
@@ -350,14 +371,82 @@ switch ($action) {
             if ($set) {
                 relay_q($connect, 'UPDATE general_info SET ' . implode(', ', $set) . ' WHERE id = ?', [...$params, $id]);
             }
+            if ($nameNew !== '' || $addressNew !== '') { // как в update: имя и адрес и в devices
+                relay_q($connect, 'UPDATE devices SET name = COALESCE(?, name), location = COALESCE(?, location) WHERE id = ?',
+                    [$nameNew !== '' ? $nameNew : null, $addressNew !== '' ? mb_substr($addressNew, 0, 100) : null, $id]);
+            }
             if ($mountBulk !== null) {
                 relay_q($connect, 'UPDATE general_info SET mount_changed_at = IF(COALESCE(mount_state, 0) <> ?, NOW(), mount_changed_at), mount_state = ? WHERE id = ?',
                     [$mountBulk, $mountBulk, $id]);
             }
-            relay_event($connect, $id, 'info', 'Массовое изменение: ' . implode(', ', $names), 'info', null, $login);
+            relay_event($connect, $id, 'info', 'Изменение данных: ' . implode(', ', $names), 'info', null, $login);
             $updated[] = $id;
         }
         relay_json(['ok' => true, 'updated' => $updated, 'missing' => $missing]);
+
+    case 'replace':
+        // замена оборудования на адресе: карточка объекта переходит с id на new_id
+        $id = (int)($_POST['id'] ?? 0);
+        $raw = trim((string)($_POST['new_id'] ?? ''));
+        if (!preg_match('/^[1-9][0-9]{0,9}$/', $raw) || (int)$raw > 4294967295) {
+            relay_json(['error' => 'Новый ID — целое число от 1 без ведущих нулей (как в меню настройки устройства)'], 400);
+        }
+        $newId = (int)$raw;
+        if ($newId === $id) {
+            relay_json(['error' => 'Новый ID совпадает с текущим'], 400);
+        }
+        $old = mysqli_fetch_assoc(relay_q($connect, 'SELECT g.*, d.name AS d_name, d.location AS d_location
+                                                       FROM general_info g LEFT JOIN devices d ON d.id = g.id WHERE g.id = ?', [$id]));
+        if (!$old) {
+            relay_json(['error' => "Устройство #$id не найдено"], 404);
+        }
+        $oldName = (string)($old['name_obj'] ?: ($old['d_name'] ?: "Устройство $id"));
+        $oldAddress = (string)($old['address'] ?: ($old['d_location'] ?? ''));
+        $new = mysqli_fetch_assoc(relay_q($connect, 'SELECT COALESCE(mount_state, 0) AS mount_state, name_obj FROM general_info WHERE id = ?', [$newId]));
+        if ($new && RELAY_MOUNT[(int)$new['mount_state']] === 'mounted') {
+            relay_json(['error' => "Устройство #$newId смонтировано на другом объекте («{$new['name_obj']}»). "
+                . 'Для замены нужно устройство «не смонтировано» или «демонтировано (в ремонт)» — либо ID, которого ещё нет в панели'], 409);
+        }
+        $registered = false;
+        if (!$new) {
+            // нового оборудования нет в панели — регистрируем в брокере, как при добавлении
+            [$code, $out] = relay_device_cli(['add', (string)$newId, $oldName, $oldAddress]);
+            if ($code !== 0) {
+                relay_json(['error' => "Не удалось зарегистрировать устройство #$newId в брокере: $out"
+                    . ($code === 126 ? '. Добавьте его сначала кнопкой «Добавить устройство» или на сервере: sudo relay-device add ' . $newId : ''),
+                    'hint' => "sudo relay-device add $newId"], 500);
+            }
+            relay_q($connect, 'DELETE FROM pending_devices WHERE id = ?', [$newId]);
+            relay_event($connect, $newId, 'info', 'Устройство зарегистрировано в панели', 'info', null, $login);
+            $registered = true;
+        }
+        mysqli_begin_transaction($connect);
+        try {
+            // 1. данные объекта → новое оборудование (калибровка АКБ, версия, SIM и т. п. остаются за оборудованием)
+            relay_q($connect, 'UPDATE general_info SET name_obj = ?, address = ?, coordinates = ?, owner = ?,
+                                      name_reley_1 = ?, name_reley_2 = ?, name_reley_3 = ?, name_reley_4 = ?,
+                                      relays_disabled = ?, relay4_lock = ?, relay4_wash = ?, lock_unused = ? WHERE id = ?',
+                [$oldName, $oldAddress, $old['coordinates'] ?? '', $old['owner'] ?? '',
+                 $old['name_reley_1'], $old['name_reley_2'], $old['name_reley_3'], $old['name_reley_4'],
+                 (int)($old['relays_disabled'] ?? 0), (int)($old['relay4_lock'] ?? 0), (int)($old['relay4_wash'] ?? 0), (int)($old['lock_unused'] ?? 0), $newId]);
+            relay_q($connect, 'UPDATE devices SET name = ?, location = ? WHERE id = ?', [$oldName, mb_substr($oldAddress, 0, 100), $newId]);
+            save_mount($connect, $newId, array_search('mounted', RELAY_MOUNT, true), $login);
+            // 2. доступ пользователей и комментарии — к объекту
+            relay_q($connect, 'DELETE FROM panel_user_relays WHERE device_id = ?', [$newId]);
+            relay_q($connect, 'UPDATE panel_user_relays SET device_id = ? WHERE device_id = ?', [$newId, $id]);
+            relay_q($connect, 'UPDATE device_comments SET device_id = ? WHERE device_id = ?', [$newId, $id]);
+            // 3. старое оборудование — снято с объекта, в ремонт
+            relay_q($connect, "UPDATE general_info SET name_obj = ?, address = '', coordinates = '', owner = '' WHERE id = ?", ["Устройство $id", $id]);
+            relay_q($connect, "UPDATE devices SET name = ?, location = '' WHERE id = ?", ["Устройство $id", $id]);
+            save_mount($connect, $id, array_search('repair', RELAY_MOUNT, true), $login);
+            relay_event($connect, $id, 'info', "Замена оборудования: снято с объекта «{$oldName}»" . ($oldAddress !== '' ? " ($oldAddress)" : '') . ", на объекте теперь #$newId", 'info', null, $login);
+            relay_event($connect, $newId, 'info', "Замена оборудования: установлено на объект «{$oldName}»" . ($oldAddress !== '' ? " ($oldAddress)" : '') . " вместо #$id", 'info', null, $login);
+            mysqli_commit($connect);
+        } catch (Throwable $e) {
+            mysqli_rollback($connect);
+            relay_json(['error' => 'Не удалось перенести карточку: ' . $e->getMessage()], 500);
+        }
+        relay_json(['ok' => true, 'id' => $newId, 'old_id' => $id, 'registered' => $registered]);
 
     case 'mqtt_block':
     case 'mqtt_unblock':
