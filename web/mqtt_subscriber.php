@@ -476,6 +476,13 @@ function onMessage(array $broker, string $topic, string $message, bool $retained
             }
         }
         $decoded = relay_log_message(db(), (int)$broker['id'], 'in', $topic, $message, $retained);
+        if ($decoded && $decoded['type'] === 'stat') {
+            try { // симуляции, которые повторяют данные этого устройства
+                simMirror($decoded, $message, $retained);
+            } catch (Throwable $e) {
+                writeLog('симуляция (повтор данных): ' . $e->getMessage(), 'ERROR');
+            }
+        }
         if (!$local || !$decoded) {
             return;
         }
@@ -635,17 +642,23 @@ function syncSims(): void
             'row_id' => (int)$row['id'], 'broker' => (int)$row['broker_id'], 'device' => (int)$row['device_id'],
             'version' => in_array((int)$row['version'], [1, 11, 2, 3], true) ? (int)$row['version'] : 2, 'interval' => max(5, (int)$row['interval_sec']),
             'sl' => (int)$row['signal_level'], 'bat' => (int)$row['bat_adc'],
+            'mirror' => isset($row['mirror_id']) && $row['mirror_id'] !== null ? (int)$row['mirror_id'] : 0, // повторять данные устройства
         ];
         $relays = array_map('intval', explode(',', $row['relays'] . ',0,0,0,0'));
         if (!isset($sims[$k])) {
             $sims[$k] = $fromDb + ['relays' => array_slice($relays, 0, 4), 'lock' => (int)$row['lock_state'], 'door' => (int)$row['door_state'],
                                    'next_stat' => 0.0, 'reboot_until' => 0.0, 'restart' => [], 'last_cmd_id' => null];
-            writeLog("симуляция: запущено устройство {$fromDb['device']} (брокер #{$fromDb['broker']})");
+            writeLog("симуляция: запущено устройство {$fromDb['device']} (брокер #{$fromDb['broker']})"
+                . ($fromDb['mirror'] ? ", повторяет данные устройства {$fromDb['mirror']}" : ''));
             if ((int)$row['dirty']) {
                 relay_q(db(), 'UPDATE mqtt_simulations SET dirty = 0 WHERE id = ?', [$fromDb['row_id']]);
             }
+            if ($fromDb['mirror']) {
+                simMirrorLast($k); // сразу — последний stat устройства-источника
+            }
             continue;
         }
+        $mirrorWas = $sims[$k]['mirror'];
         $sims[$k] = $fromDb + $sims[$k];
         if ((int)$row['dirty']) { // реле или дверь переключены вручную в панели — «как будто на месте»
             $sims[$k]['relays'] = array_slice($relays, 0, 4);
@@ -653,6 +666,12 @@ function syncSims(): void
             $sims[$k]['door'] = (int)$row['door_state'];
             $sims[$k]['next_stat'] = 0.0;
             relay_q(db(), 'UPDATE mqtt_simulations SET dirty = 0 WHERE id = ?', [$fromDb['row_id']]);
+            if ($sims[$k]['mirror'] && $sims[$k]['mirror'] !== $mirrorWas) {
+                writeLog("симуляция {$fromDb['device']}: повторяет данные устройства {$sims[$k]['mirror']}");
+                simMirrorLast($k); // источник выбран или сменился — сразу его последний stat
+            } elseif ($sims[$k]['mirror']) {
+                simStat($k); // кнопка «stat» или переключение на месте
+            }
         }
     }
     foreach (array_keys($sims) as $k) {
@@ -715,6 +734,69 @@ function simStat(string $k): void
         $s['next_stat'] = microtime(true) + 3; // брокер ещё не подключён — повторим
     }
     unset($s);
+}
+
+/**
+ * «Повторять данные устройства»: stat источника (payload как есть) публикуется от имени симуляции —
+ * меняется только ID в начале пакета; состояние симуляции (реле, замок, дверь, сигнал, АКБ) — как у источника.
+ */
+function simMirrorPublish(string $k, string $payload): void
+{
+    global $sims;
+    $s = &$sims[$k];
+    $d = relay_decode('stat', $payload);
+    if (!$d || $s['reboot_until'] > 0) {
+        unset($s);
+        return;
+    }
+    $s['relays'] = [(int)$d['r1'], (int)$d['r2'], (int)$d['r3'], (int)$d['r4']];
+    $s['sl'] = (int)$d['sl'];
+    if (isset($d['bat_adc'])) {
+        $s['bat'] = (int)$d['bat_adc'];
+    }
+    if (isset($d['door'])) {
+        $s['lock'] = (int)$d['lock'];
+        $s['door'] = (int)$d['door'];
+    }
+    $p = pack('V', $s['device']) . substr($payload, 4);
+    $ok = simPublish($s, 'stat', $p, true);
+    $s['next_stat'] = microtime(true) + ($ok ? $s['interval'] : 3);
+    $row = $s['row_id'];
+    $state = [implode(',', $s['relays']), $s['lock'], $s['door'], $s['sl'], $s['bat']];
+    unset($s);
+    if ($ok) {
+        relay_q(db(), 'UPDATE mqtt_simulations SET stat_count = stat_count + 1, last_stat_at = NOW(),
+                              relays = ?, lock_state = ?, door_state = ?, signal_level = LEAST(?, 127), bat_adc = ? WHERE id = ? AND dirty = 0', [...$state, $row]);
+    }
+}
+
+/** Последний stat устройства-источника из журнала → от имени симуляции (нет такого — обычный stat симуляции) */
+function simMirrorLast(string $k): void
+{
+    global $sims;
+    $res = relay_q(db(), "SELECT payload_hex FROM mqtt_messages WHERE device_id = ? AND topic = 'stat' AND direction = 'in'
+                          ORDER BY id DESC LIMIT 1", [$sims[$k]['mirror']]);
+    $m = $res instanceof mysqli_result ? mysqli_fetch_row($res) : null;
+    $payload = $m ? @hex2bin((string)$m[0]) : false;
+    if ($payload !== false && strlen($payload) >= 32) {
+        simMirrorPublish($k, $payload);
+    } else {
+        simStat($k);
+    }
+}
+
+/** Пришёл stat устройства — повторить его всем симуляциям, которые повторяют это устройство */
+function simMirror(array $decoded, string $payload, bool $retained): void
+{
+    global $sims;
+    if ($retained || ($decoded['type'] ?? '') !== 'stat') {
+        return; // retained-копия при переподключении — не новые данные
+    }
+    foreach (array_keys($sims) as $k) {
+        if ($sims[$k]['mirror'] === (int)$decoded['id'] && $sims[$k]['device'] !== (int)$decoded['id']) {
+            simMirrorPublish($k, $payload);
+        }
+    }
 }
 
 function simSave(string $k, string $label): void
@@ -803,7 +885,8 @@ function simTick(): void
                 $changed = true;
             }
         }
-        $due = $s['reboot_until'] === 0.0 && ($changed || $now >= $s['next_stat']);
+        // «повторять данные»: stat — только вслед за источником (и после команды); молчит источник — молчит и симуляция
+        $due = $s['reboot_until'] === 0.0 && ($changed || (!$s['mirror'] && $now >= $s['next_stat']));
         unset($s);
         if ($changed) {
             simSave($k, 'перезапуск реле завершён');

@@ -65,13 +65,18 @@ layout_head('Монитор', 'monitor', $login);
           <label class="field">stat каждые, с<input class="input" name="interval_sec" type="number" min="5" max="3600" value="60" style="width:100px"></label>
           <label class="field">Плата<select class="input" name="version" style="width:170px">
             <option value="1">версия 1 — первоначальная (без АКБ)</option><option value="11">версия 1-1 — АКБ в поле сигнала</option><option value="2" selected>версия 2 — 4 реле, АКБ</option><option value="3">версия 3 — ver_5_1, замок и дверь</option></select></label>
+          <label class="field" title="Каждый stat этого устройства сразу публикуется от имени симулируемого: реле, сигнал, АКБ, замок и дверь — как у него">Повторять данные ID
+            <input class="input mono" name="mirror" type="number" min="1" step="1" placeholder="не повторять" style="width:130px"></label>
           <div class="btn-row"><button class="btn primary" type="submit">Запустить</button></div>
         </form>
         <div class="result" id="sim-result"></div>
         <div id="sim-list"></div>
         <p class="muted" style="font-size:12.5px;margin:10px 0 0">Устройства собственного брокера появляются в разделе «Устройства» как обычные, и ими можно управлять из панели.
           Кнопки реле в этом списке переключают реле «на месте», без команды: так можно проверить, например, тревогу «взлом двери»
-          (реле 4 — замок: выключить реле 4).</p>
+          (реле 4 — замок: выключить реле 4).
+          «Повторять данные ID» (при запуске или кнопкой «Повторять…» в строке) — симулируемое устройство публикует копию каждого stat
+          указанного настоящего устройства (реле, сигнал, АКБ, замок и дверь); своих stat по таймеру не шлёт: источник молчит — молчит и копия.
+          На команды копия отвечает сама.</p>
       </div>
     </section>
 
