@@ -5,6 +5,9 @@
  *   POST action=start   devices («101, 102-105»), broker_id, interval_sec, version (2|3)
  *   POST action=set     id, relay (1–4) | door | lock — переключить «на месте», без команды (сразу публикуется stat)
  *   POST action=stat    id — опубликовать stat сейчас
+ *   POST action=mirror  id, source (ID устройства; '' — не повторять) — повторять данные устройства: каждый его stat
+ *        публикуется от имени симулируемого (реле, сигнал, АКБ, замок и дверь как у source); свой stat по таймеру не шлётся
+ *   start: mirror — то же для запускаемых устройств (необязательно)
  *   POST action=stop    id | all=1
  * Подписчик (mqtt_subscriber.php) читает таблицу mqtt_simulations раз в 2 секунды: публикует stat от имени
  * устройства и отвечает rep на команды com/{id}, как настоящая плата.
@@ -31,6 +34,27 @@ function sim_parse_ids(string $s): array
     }
 }
 
+/** ID устройства-источника для «повторять данные» (null — не повторять); проверка: не само устройство и не симуляция */
+function sim_mirror_source(mysqli $db, string $raw, array $simIds): ?int
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return null;
+    }
+    if (!preg_match('/^[1-9][0-9]{0,9}$/', $raw) || (int)$raw > 4294967295) {
+        relay_json(['error' => 'Повторять данные: укажите ID устройства — целое число от 1'], 400);
+    }
+    $src = (int)$raw;
+    if (in_array($src, $simIds, true)) {
+        relay_json(['error' => "Устройство #$src — симуляция (или то же самое устройство): повторять можно только данные настоящего устройства"], 400);
+    }
+    $sim = relay_q($db, 'SELECT 1 FROM mqtt_simulations WHERE device_id = ? LIMIT 1', [$src]);
+    if ($sim && mysqli_num_rows($sim) > 0) {
+        relay_json(['error' => "Устройство #$src само симулируется — повторять можно только данные настоящего устройства"], 400);
+    }
+    return $src;
+}
+
 function sim_row(mysqli $db, int $id): array
 {
     $r = mysqli_fetch_assoc(relay_q($db, 'SELECT * FROM mqtt_simulations WHERE id = ?', [$id]));
@@ -50,6 +74,7 @@ switch ($action) {
                 $r[$k] = (int)$r[$k];
             }
             $r['relays'] = array_map('intval', array_slice(explode(',', $r['relays'] . ',0,0,0,0'), 0, 4));
+            $r['mirror_id'] = isset($r['mirror_id']) && $r['mirror_id'] !== null ? (int)$r['mirror_id'] : null;
             $r['last_stat_ts'] = $r['last_stat_ts'] === null ? null : (int)$r['last_stat_ts'];
             $r['last_cmd_ts'] = $r['last_cmd_ts'] === null ? null : (int)$r['last_cmd_ts'];
         }
@@ -73,6 +98,7 @@ switch ($action) {
         $interval = max(5, min(3600, (int)($_POST['interval_sec'] ?? 60)));
         $version = in_array((int)($_POST['version'] ?? 2), [1, 11, 2, 3], true) ? (int)$_POST['version'] : 2;
         $local = (int)$broker['is_local'] === 1;
+        $mirror = sim_mirror_source($connect, (string)($_POST['mirror'] ?? ''), $ids);
         $started = [];
         foreach ($ids as $dev) {
             // начальное состояние реле — последнее известное серверу (для собственного брокера), иначе всё выключено
@@ -84,10 +110,10 @@ switch ($action) {
                     }
                 }
             }
-            relay_q($connect, 'INSERT INTO mqtt_simulations (broker_id, device_id, relays, version, interval_sec, signal_level, bat_adc, created_by)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                               ON DUPLICATE KEY UPDATE version = VALUES(version), interval_sec = VALUES(interval_sec), dirty = 1',
-                [(int)$broker['id'], $dev, implode(',', $relays), $version, $interval, random_int(14, 28), random_int(560, 640), $login]);
+            relay_q($connect, 'INSERT INTO mqtt_simulations (broker_id, device_id, relays, version, interval_sec, signal_level, bat_adc, mirror_id, created_by)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ON DUPLICATE KEY UPDATE version = VALUES(version), interval_sec = VALUES(interval_sec), mirror_id = VALUES(mirror_id), dirty = 1',
+                [(int)$broker['id'], $dev, implode(',', $relays), $version, $interval, random_int(14, 28), random_int(560, 640), $mirror, $login]);
             $started[] = $dev;
         }
         relay_json(['ok' => true, 'started' => $started]);
@@ -114,6 +140,12 @@ switch ($action) {
     case 'stat':
         relay_q($connect, 'UPDATE mqtt_simulations SET dirty = 1 WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
         relay_json(['ok' => true]);
+
+    case 'mirror':
+        $r = sim_row($connect, (int)($_POST['id'] ?? 0));
+        $src = sim_mirror_source($connect, (string)($_POST['source'] ?? ''), [(int)$r['device_id']]);
+        relay_q($connect, 'UPDATE mqtt_simulations SET mirror_id = ?, dirty = 1 WHERE id = ?', [$src, (int)$r['id']]);
+        relay_json(['ok' => true, 'mirror_id' => $src]);
 
     case 'stop':
         if (($_POST['all'] ?? '') === '1') {

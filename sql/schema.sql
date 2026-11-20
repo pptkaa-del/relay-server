@@ -489,3 +489,10 @@ CREATE TABLE IF NOT EXISTS `server_state` (
     `v` TEXT NOT NULL,
     `ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- v3.45: симуляция «повторять данные устройства»: каждый stat устройства mirror_id
+--        публикуется от имени симулируемого устройства (NULL — обычная симуляция)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `mqtt_simulations`
+    ADD COLUMN IF NOT EXISTS `mirror_id` INT(11) DEFAULT NULL;
