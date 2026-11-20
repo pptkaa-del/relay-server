@@ -413,6 +413,32 @@
     finally { btn.disabled = false; }
   });
 
+  // удалить указанные устройства (как «Удалить» на странице устройства, для каждого)
+  $('#bulk-delete').addEventListener('click', async () => {
+    const res = $('#bulk-result'), btn = $('#bulk-delete');
+    const ids = parseIds(bulkForm.elements.ids.value.trim());
+    if (typeof ids === 'string' || !ids.length) { res.className = 'result err'; res.textContent = typeof ids === 'string' ? ids : 'Укажите номера устройств'; bulkForm.elements.ids.focus(); return; }
+    const known = new Map(devices.map(d => [d.id, d])), found = ids.filter(i => known.has(i));
+    if (!found.length) { res.className = 'result err'; res.textContent = 'Таких устройств нет в панели'; return; }
+    const list = found.slice(0, 15).map(i => `#${i} ${known.get(i).name}`).join('\n') + (found.length > 15 ? `\n… и ещё ${found.length - 15}` : '');
+    if (!confirm(`Удалить устройств: ${found.length}?\n\n${list}\n\nИх доступ к брокеру будет закрыт, состояние и журнал событий — удалены.\nВернуть устройство можно кнопкой «Добавить устройство».`)) return;
+    // много устройств — подтверждение числом
+    if (found.length >= 5 && (prompt(`Для подтверждения введите число удаляемых устройств (${found.length}):`) || '').trim() !== String(found.length)) {
+      toast('Удаление отменено', 'err'); return;
+    }
+    btn.disabled = true;
+    try {
+      const j = await api('/api/devices.php', { action: 'bulk_delete', ids: found.join(',') }, true);
+      res.className = j.not_closed.length ? 'result err' : 'result ok';
+      res.textContent = `Удалено устройств: ${j.deleted.length}` + (j.note ? '. ' + j.note : '');
+      toast(`Удалено устройств: ${j.deleted.length}`, 'ok');
+      if (j.deleted.includes(selected)) select(0);
+      bulkForm.elements.ids.value = '';
+      await load().catch(() => {}); bulkPreview();
+    } catch (er) { res.className = 'result err'; res.textContent = er.message; }
+    finally { btn.disabled = false; }
+  });
+
   /* ---------- Незарегистрированные платы ---------- */
   const isAdmin = document.body.classList.contains('role-admin');
 

@@ -196,6 +196,8 @@ layout_head('Устройства', 'devices', $login);
     </div>
     <div class="modal-foot">
       <button class="btn" value="cancel" formnovalidate>Закрыть</button>
+      <button class="btn danger-text bulk-delete" type="button" id="bulk-delete" title="Удалить указанные устройства: доступ к брокеру закрывается, состояние и журнал событий удаляются">Удалить устройства</button>
+      <span class="spacer"></span>
       <button class="btn primary" type="submit" id="bulk-submit">Применить</button>
     </div>
   </form>
