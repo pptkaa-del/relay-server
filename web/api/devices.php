@@ -11,6 +11,7 @@
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ: points [время, АЦП, В | null, [реле 1..4]] по пакетам stat
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
+ *   POST action=bulk_delete ids («1, 3, 5-10») — удалить несколько устройств (как delete для каждого)
  *   POST action=bulk_relays ids («1, 3, 5-10»), relay1..relay4, relay4_lock ('' | 1 | 0) — изменение данных устройств:
  *        названия реле (пустое — не менять) и «Реле 4 — замок двери» ('' — не менять);
  *        name, address, coordinates («55.75, 37.61») — только если указано одно устройство (пустое — не менять)
@@ -34,10 +35,10 @@ require __DIR__ . '/../conectbd.php';
 require __DIR__ . '/../lib/devices.php';
 
 $action = $_REQUEST['action'] ?? 'list';
-if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays', 'replace', 'mqtt_block', 'mqtt_unblock'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (in_array($action, ['add', 'update', 'command', 'delete', 'pending_ignore', 'ack_break_in', 'bulk_relays', 'bulk_delete', 'replace', 'mqtt_block', 'mqtt_unblock'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     relay_json(['error' => 'Нужен POST'], 405);
 }
-if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays', 'replace', 'export_repair'], true) && !relay_is_admin()) {
+if (in_array($action, ['add', 'update', 'delete', 'pending', 'pending_ignore', 'bulk_relays', 'bulk_delete', 'replace', 'export_repair'], true) && !relay_is_admin()) {
     relay_forbidden('Добавлять устройства и изменять их данные может только администратор');
 }
 
@@ -134,6 +135,17 @@ function bat_from_post(): array
         relay_json(['error' => "Значения АЦП при {$t['low']} В и при {$t['high']} В должны различаться"], 400);
     }
     return [$type, $t['col_low'], $lo, $t['col_high'], $hi];
+}
+
+/** Удалить устройство: закрыть доступ к брокеру, убрать из панели. Возвращает [доступ закрыт, вывод relay-device]. */
+function device_delete(mysqli $db, int $id): array
+{
+    [$code, $out] = relay_device_cli(['del', (string)$id]);
+    relay_q($db, 'DELETE FROM devices WHERE id = ?', [$id]);      // каскадом: relay_states, commands, device_last_update
+    relay_q($db, 'DELETE FROM general_info WHERE id = ?', [$id]);
+    relay_q($db, 'DELETE FROM device_events WHERE device_id = ?', [$id]);
+    @relay_q($db, 'DELETE FROM panel_user_relays WHERE device_id = ?', [$id]);
+    return [$code === 0, $out];
 }
 
 switch ($action) {
@@ -579,14 +591,36 @@ switch ($action) {
         if ($id <= 0) {
             relay_json(['error' => 'Не указано устройство'], 400);
         }
-        [$code, $out] = relay_device_cli(['del', (string)$id]);
-        relay_q($connect, 'DELETE FROM devices WHERE id = ?', [$id]);      // каскадом: relay_states, commands, device_last_update
-        relay_q($connect, 'DELETE FROM general_info WHERE id = ?', [$id]);
-        relay_q($connect, 'DELETE FROM device_events WHERE device_id = ?', [$id]);
-        @relay_q($connect, 'DELETE FROM panel_user_relays WHERE device_id = ?', [$id]);
-        relay_json(['ok' => true, 'note' => $code === 0
+        [$closed, $out] = device_delete($connect, $id);
+        relay_json(['ok' => true, 'note' => $closed
             ? 'Доступ устройства к брокеру закрыт.'
             : "Не удалось закрыть доступ к брокеру автоматически ($out). Выполните на сервере: sudo relay-device del $id"]);
+
+    case 'bulk_delete':
+        try {
+            $ids = relay_parse_id_list((string)($_POST['ids'] ?? ''));
+        } catch (RuntimeException $e) {
+            relay_json(['error' => $e->getMessage()], 400);
+        }
+        if (!$ids) {
+            relay_json(['error' => 'Укажите номера устройств, например: 1, 3, 5-10'], 400);
+        }
+        $deleted = $missing = $notClosed = [];
+        foreach ($ids as $id) {
+            $res = relay_q($connect, 'SELECT 1 FROM general_info WHERE id = ? UNION SELECT 1 FROM devices WHERE id = ?', [$id, $id]);
+            if (!$res || mysqli_num_rows($res) === 0) {
+                $missing[] = $id;
+                continue;
+            }
+            [$closed] = device_delete($connect, $id);
+            $deleted[] = $id;
+            if (!$closed) {
+                $notClosed[] = $id;
+            }
+        }
+        relay_json(['ok' => true, 'deleted' => $deleted, 'missing' => $missing, 'not_closed' => $notClosed,
+                    'note' => $notClosed ? 'Не удалось закрыть доступ к брокеру автоматически для: ' . implode(', ', $notClosed)
+                        . '. Выполните на сервере: ' . implode('; ', array_map(fn($i) => "sudo relay-device del $i", $notClosed)) : '']);
 
     default:
         relay_json(['error' => 'Неизвестное действие'], 400);
