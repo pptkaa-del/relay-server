@@ -9,6 +9,8 @@
  *   POST action=add id, name, address, relay1..relay4 — зарегистрировать новую плату (брокер + панель)
  *   GET  ?action=pending              — платы, которые пытались подключиться, но не зарегистрированы
  *   POST action=pending_ignore id     — скрыть такую плату из списка
+ *   GET  ?action=battery_all&hours=24|168|720 — мониторинг АКБ: напряжение всех доступных устройств
+ *        (средние по интервалам bucket секунд): devices [{id, name, bat_type, calibrated, voltage, points [[время, В]]}]
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ: points [время, АЦП, В | null, [реле 1..4]] по пакетам stat
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  *   POST action=bulk_delete ids («1, 3, 5-10») — удалить несколько устройств (как delete для каждого)
@@ -529,6 +531,47 @@ switch ($action) {
     case 'pending_ignore':
         relay_q($connect, 'UPDATE pending_devices SET ignored = 1 WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
         relay_json(['ok' => true]);
+
+    case 'battery_all':
+        // мониторинг АКБ: все устройства, которые видит пользователь, с включённым контролем АКБ
+        $hours = in_array((int)($_GET['hours'] ?? 24), [24, 168, 720], true) ? (int)$_GET['hours'] : 24;
+        $bucket = max(300, (int)round($hours * 3600 / 240 / 60) * 60);  // ~240 точек на устройство: 24 ч — 6 мин, 7 дн — 42 мин, 30 дн — 3 ч
+        $devs = array_values(array_filter(device_rows($connect), fn($d) => $d['bat_on']));
+        $out = [];
+        $byField = ['$.bat_adc' => [], '$.sl' => []];
+        foreach ($devs as $d) {
+            $out[$d['id']] = ['id' => $d['id'], 'name' => $d['name'], 'address' => $d['address'], 'bat_type' => $d['bat_type'],
+                              'mount' => $d['mount'], 'online' => $d['online'],
+                              'calibrated' => $d['cal_low'] !== null && $d['cal_high'] !== null,
+                              'voltage' => $d['bat_voltage'], 'adc' => $d['bat_adc'], 'points' => []];
+            $byField[$d['dev_version'] === RELAY_V11 ? '$.sl' : '$.bat_adc'][] = $d['id']; // версия 1-1: АЦП АКБ в поле сигнала
+        }
+        $cal = [];
+        foreach ($devs as $d) {
+            $cal[$d['id']] = [$d['cal_low'], $d['cal_high'], $d['bat_type']];
+        }
+        foreach ($byField as $field => $ids) {
+            if (!$ids) {
+                continue;
+            }
+            $in = implode(',', array_map('intval', $ids));
+            $rows = relay_rows(relay_q($connect,
+                "SELECT device_id, FLOOR(UNIX_TIMESTAMP(ts) / ?) AS k, MAX(UNIX_TIMESTAMP(ts)) AS t,
+                        AVG(CAST(JSON_VALUE(decoded, '$field') AS UNSIGNED)) AS adc
+                   FROM mqtt_messages
+                  WHERE ts > NOW() - INTERVAL ? HOUR AND broker_id = 1 AND topic = 'stat' AND direction = 'in'
+                    AND device_id IN ($in) AND JSON_VALUE(decoded, '$field') IS NOT NULL
+                  GROUP BY device_id, k ORDER BY device_id, k", [$bucket, $hours]));
+            foreach ($rows as $r) {
+                $id = (int)$r['device_id'];
+                [$lo, $hi, $type] = $cal[$id];
+                $v = relay_battery_voltage((int)round((float)$r['adc']), $lo, $hi, (int)$type);
+                if ($v !== null) {
+                    $out[$id]['points'][] = [(int)$r['t'], $v];
+                }
+            }
+        }
+        relay_json(['devices' => array_values($out), 'hours' => $hours, 'bucket' => $bucket, 'now' => time()]);
 
     case 'battery':
         $id = (int)($_GET['id'] ?? 0);

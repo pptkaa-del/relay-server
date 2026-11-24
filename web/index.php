@@ -10,6 +10,7 @@ layout_head('Устройства', 'devices', $login);
     <p id="lastmsg">Загрузка…</p>
   </div>
   <div class="btn-row">
+    <a class="btn" href="/battery.php" title="Напряжение АКБ всех устройств на одном графике, с выбором устройств"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2M6 11v2"/></svg>Мониторинг АКБ</a>
     <button class="btn" id="b-bulk" title="Изменить данные одного или сразу нескольких устройств; для одного — название, адрес и замена оборудования (новый ID)"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Изменение данных устройства</button>
     <button class="btn primary" id="b-add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Добавить устройство</button>
   </div>
