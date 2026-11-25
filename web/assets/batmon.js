@@ -13,7 +13,8 @@
   let firstRun = !Array.isArray(saved.sel);   // впервые — 8 устройств с самым низким напряжением
   if (!firstRun) selected = new Set(saved.sel);
   if (saved.slots) slotOf = new Map(saved.slots);
-  const save = () => store.set('relay-batmon', { hours, sel: [...selected], slots: [...slotOf] });
+  let below = typeof saved.below === 'number' ? saved.below : null;   // фильтр «АКБ ниже, В» (null — все)
+  const save = () => store.set('relay-batmon', { hours, sel: [...selected], slots: [...slotOf], below });
 
   const byId = id => data && data.devices.find(d => d.id === id);
   const usable = d => d.calibrated && d.points.length > 0;      // есть что рисовать в вольтах
@@ -47,7 +48,19 @@
 
   /** 8 устройств с самым низким текущим напряжением */
   const lowest = list => list.filter(usable).sort((a, b) => (a.voltage ?? 1e9) - (b.voltage ?? 1e9)).slice(0, SLOTS).map(d => d.id);
-  const matches = (d, q) => !q || String(d.id) === q.replace('#', '') || (d.name + ' ' + (d.address || '') + ' ' + d.id).toLowerCase().includes(q);
+  const matches = (d, q) => (!q || String(d.id) === q.replace('#', '') || (d.name + ' ' + (d.address || '') + ' ' + d.id).toLowerCase().includes(q))
+    && (below === null || (d.voltage != null && d.voltage < below));   // «АКБ ниже, В»
+  const ago2 = ts => App.ago(ts);
+
+  /** Реле 1: состояние и последняя подача питания (по журналу событий) */
+  function relay1Html(d) {
+    if (d.relay1 == null) return '';
+    const name = esc(d.relay1_name), when = d.relay1_on_ts ? `${fmtTime(d.relay1_on_ts)} (${ago2(d.relay1_on_ts)})` : '';
+    const text = d.relay1 === 1 ? `питание подано${when ? ' с ' + when : ' — включение раньше журнала'}`
+      : d.relay1 === 2 ? `ошибка${when ? ' · последний раз подано ' + when : ''}`
+      : `нет питания${when ? ' · последний раз подано ' + when : ' · подачи питания в журнале нет'}`;
+    return `<span class="bm-r1 r1-${d.relay1}" title="Реле 1 «${name}»: последняя подача питания — по журналу событий устройства">Реле 1 «${name}»: ${text}</span>`;
+  }
 
   function render() { renderList(); renderLegend(); renderChart(); }
 
@@ -57,13 +70,16 @@
     const list = data.devices.filter(d => matches(d, q))
       .sort((a, b) => (usable(b) - usable(a)) || ((a.voltage ?? 1e9) - (b.voltage ?? 1e9)) || a.id - b.id);
     $('#bm-sel-count').textContent = `выбрано ${selected.size}`;
+    const n = list.length, ending = n % 10 === 1 && n % 100 !== 11 ? 'о' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'а' : '';
+    $('#bm-found').textContent = below !== null ? `АКБ ниже ${String(below).replace('.', ',')} В: ${n} устройств${ending}` : '';
+    $('#bm-below-only').classList.toggle('hidden', below === null || !list.some(usable));
     $('#bm-list').innerHTML = list.length ? list.map(d => {
       const on = selected.has(d.id), can = usable(d);
       const v = d.voltage != null ? `${d.voltage.toFixed(2)} В` : d.adc != null ? `АЦП ${d.adc}` : 'нет данных';
       return `<label class="bm-item${on ? ' on' : ''}${can ? '' : ' off'}" data-id="${d.id}" title="${can ? '' : d.calibrated ? 'Нет данных АКБ за период' : 'Нет калибровки АКБ — напряжение не рассчитывается'}">
         <input type="checkbox" ${on ? 'checked' : ''} ${can ? '' : 'disabled'} data-pick-id="${d.id}">
         <i class="bm-sw" style="${on ? `background:${color(d.id)}` : ''}"></i>
-        <span class="bm-name"><b>${esc(d.name)}</b> <span class="muted">#${d.id}</span>${d.address ? `<span class="muted bm-addr">${esc(d.address)}</span>` : ''}</span>
+        <span class="bm-name"><b>${esc(d.name)}</b> <span class="muted">#${d.id}</span>${d.address ? `<span class="muted bm-addr">${esc(d.address)}</span>` : ''}${relay1Html(d)}</span>
         <span class="bm-v"><span class="bat ${vClass(d)}">${v}</span><span class="muted">${can ? 'АКБ ' + d.bat_type + ' В' : d.calibrated ? 'нет данных' : 'без калибровки'}</span></span></label>`;
     }).join('') : '<div class="muted" style="padding:12px 0;font-size:13px">Не найдено</div>';
   }
@@ -201,6 +217,19 @@
     hoverId = 0; assignSlots(); save(); render();
   });
   $('#bm-q').addEventListener('input', e => { query = e.target.value; renderList(); });
+  // «АКБ ниже, В»: в списке — только устройства с текущим напряжением ниже значения
+  const belowInput = $('#bm-below');
+  if (below !== null) belowInput.value = String(below).replace('.', ',');
+  belowInput.addEventListener('input', () => {
+    const v = parseFloat(belowInput.value.replace(',', '.'));
+    below = isFinite(v) && v > 0 ? v : null; save(); if (data) renderList();
+  });
+  $('#bm-below-clear').addEventListener('click', () => { belowInput.value = ''; below = null; save(); if (data) renderList(); });
+  $('#bm-below-only').addEventListener('click', () => {
+    const q = query.trim().toLowerCase();
+    selected = new Set(data.devices.filter(d => usable(d) && matches(d, q)).map(d => d.id));
+    hoverId = 0; assignSlots(); save(); render();
+  });
   $('#bm-range').addEventListener('click', e => {
     const b = e.target.closest('button[data-h]'); if (!b) return;
     hours = +b.dataset.h; $$('#bm-range button').forEach(x => x.classList.toggle('on', x === b)); save(); load();
