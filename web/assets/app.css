@@ -760,7 +760,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .bm-note { font-size: 12.5px; margin: 8px 0 0; }
 .bm-note:empty { display: none; }
 .bm-pick .search { max-width: none; width: 100%; }
+.bm-pick .search svg { top: 50%; transform: translateY(-50%); }
 .bm-quick { margin: 10px 0 8px; flex-wrap: wrap; }
+.bm-below { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.bm-below .field { flex: 0 0 auto; }
+.bm-below .input { width: 110px; }
+.bm-found { font-size: 12.5px; margin-top: 6px; }
+.bm-found:empty { display: none; }
+.bm-r1 { display: block; font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.bm-r1.r1-0 { color: var(--muted); } .bm-r1.r1-2 { color: var(--bad); }
 .bm-list { max-height: calc(100vh - 290px); min-height: 200px; overflow: auto; margin: 0 -16px -16px; border-top: 1px solid var(--line); }
 .bm-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
 .bm-item:hover { background: var(--surface-2); }

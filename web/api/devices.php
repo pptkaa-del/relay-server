@@ -10,7 +10,8 @@
  *   GET  ?action=pending              — платы, которые пытались подключиться, но не зарегистрированы
  *   POST action=pending_ignore id     — скрыть такую плату из списка
  *   GET  ?action=battery_all&hours=24|168|720 — мониторинг АКБ: напряжение всех доступных устройств
- *        (средние по интервалам bucket секунд): devices [{id, name, bat_type, calibrated, voltage, points [[время, В]]}]
+ *        (средние по интервалам bucket секунд): devices [{id, name, bat_type, calibrated, voltage, points [[время, В]],
+ *        relay1 (0/1/2 | null), relay1_name, relay1_on_ts — последняя подача питания на реле 1 по журналу событий}]
  *   GET  ?action=battery&id=N&hours=24 — история напряжения АКБ: points [время, АЦП, В | null, [реле 1..4]] по пакетам stat
  *   POST action=delete id             — удалить плату: закрыть доступ к брокеру и убрать из панели
  *   POST action=bulk_delete ids («1, 3, 5-10») — удалить несколько устройств (как delete для каждого)
@@ -543,7 +544,8 @@ switch ($action) {
             $out[$d['id']] = ['id' => $d['id'], 'name' => $d['name'], 'address' => $d['address'], 'bat_type' => $d['bat_type'],
                               'mount' => $d['mount'], 'online' => $d['online'],
                               'calibrated' => $d['cal_low'] !== null && $d['cal_high'] !== null,
-                              'voltage' => $d['bat_voltage'], 'adc' => $d['bat_adc'], 'points' => []];
+                              'voltage' => $d['bat_voltage'], 'adc' => $d['bat_adc'], 'points' => [],
+                              'relay1' => null, 'relay1_name' => $d['relay_names'][1] ?? 'Реле 1', 'relay1_on_ts' => null];
             $byField[$d['dev_version'] === RELAY_V11 ? '$.sl' : '$.bat_adc'][] = $d['id']; // версия 1-1: АЦП АКБ в поле сигнала
         }
         $cal = [];
@@ -569,6 +571,22 @@ switch ($action) {
                 if ($v !== null) {
                     $out[$id]['points'][] = [(int)$r['t'], $v];
                 }
+            }
+        }
+        if ($out) {
+            // реле 1: текущее состояние и последняя подача питания (переход в «питание подано» в журнале событий;
+            // журнал хранится events_retention_days, по умолчанию 180 дней)
+            $in = implode(',', array_map('intval', array_keys($out)));
+            foreach (relay_rows(mysqli_query($connect, "SELECT device_id, state FROM relay_states WHERE relay_num = 1 AND device_id IN ($in)")) as $r) {
+                $out[(int)$r['device_id']]['relay1'] = (int)$r['state'];
+            }
+            foreach (relay_rows(mysqli_query($connect,
+                "SELECT device_id, UNIX_TIMESTAMP(MAX(ts)) AS t FROM device_events
+                  WHERE device_id IN ($in) AND (
+                        (type = 'relay' AND JSON_VALUE(data, '$.after[0]') = '1' AND COALESCE(JSON_VALUE(data, '$.before[0]'), '') <> '1')
+                     OR (type = 'created' AND JSON_VALUE(data, '$.r1') = '1'))
+                  GROUP BY device_id")) as $r) {
+                $out[(int)$r['device_id']]['relay1_on_ts'] = (int)$r['t'];
             }
         }
         relay_json(['devices' => array_values($out), 'hours' => $hours, 'bucket' => $bucket, 'now' => time()]);
