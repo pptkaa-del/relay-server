@@ -14,9 +14,12 @@
   if (!firstRun) selected = new Set(saved.sel);
   if (saved.slots) slotOf = new Map(saved.slots);
   let below = typeof saved.below === 'number' ? saved.below : null;   // фильтр «АКБ ниже, В» (null — все)
-  const save = () => store.set('relay-batmon', { hours, sel: [...selected], slots: [...slotOf], below });
+  let onlyOnline = saved.onlyOnline !== false;                          // «Только на связи» (по умолчанию включено)
+  const save = () => store.set('relay-batmon', { hours, sel: [...selected], slots: [...slotOf], below, onlyOnline });
 
-  const byId = id => data && data.devices.find(d => d.id === id);
+  // устройства, которые показываются: «Только на связи» скрывает остальные (их выбор сохраняется)
+  const devs = () => onlyOnline ? data.devices.filter(d => d.online) : data.devices;
+  const byId = id => data && devs().find(d => d.id === id);
   const usable = d => d.calibrated && d.points.length > 0;      // есть что рисовать в вольтах
   const color = id => slotOf.has(id) ? `var(--cat-${slotOf.get(id)})` : 'var(--cat-other)';
   const vClass = d => d.voltage == null ? 'raw' : App.batClass(d.voltage, d);
@@ -37,11 +40,12 @@
     try { data = await api('/api/devices.php', { action: 'battery_all', hours }); }
     catch (e) { $('#bm-chart').innerHTML = `<div class="chart-empty">${esc(e.message)}</div>`; return; }
     const ok = data.devices.filter(usable);
-    if (firstRun) { selected = new Set(lowest(data.devices)); firstRun = false; }
+    if (firstRun) { selected = new Set(lowest(devs())); firstRun = false; }
     // устройства, которых больше нет, — из выбора убрать
     for (const id of [...selected]) if (!data.devices.some(d => d.id === id)) selected.delete(id);
     assignSlots(); save();
-    $('#bm-sub').textContent = `Напряжение АКБ всех устройств на одном графике · с графиком: ${ok.length} из ${data.devices.length}`
+    const online = data.devices.filter(d => d.online).length;
+    $('#bm-sub').textContent = `Напряжение АКБ всех устройств на одном графике · на связи: ${online} из ${data.devices.length} · с графиком: ${ok.length}`
       + ` · точка — среднее за ${data.bucket >= 3600 ? data.bucket / 3600 + ' ч' : Math.round(data.bucket / 60) + ' мин'}`;
     render();
   }
@@ -67,9 +71,10 @@
   /* ---------- список устройств с флажками: по текущему напряжению, низкое сверху ---------- */
   function renderList() {
     const q = query.trim().toLowerCase();
-    const list = data.devices.filter(d => matches(d, q))
+    const list = devs().filter(d => matches(d, q))
       .sort((a, b) => (usable(b) - usable(a)) || ((a.voltage ?? 1e9) - (b.voltage ?? 1e9)) || a.id - b.id);
-    $('#bm-sel-count').textContent = `выбрано ${selected.size}`;
+    const shownSel = [...selected].filter(id => byId(id)).length, hiddenSel = selected.size - shownSel;
+    $('#bm-sel-count').textContent = `выбрано ${shownSel}` + (hiddenSel ? ` · ещё ${hiddenSel} не на связи` : '');
     const n = list.length, ending = n % 10 === 1 && n % 100 !== 11 ? 'о' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'а' : '';
     $('#bm-found').textContent = below !== null ? `АКБ ниже ${String(below).replace('.', ',')} В: ${n} устройств${ending}` : '';
     $('#bm-below-only').classList.toggle('hidden', below === null || !list.some(usable));
@@ -210,13 +215,16 @@
   $('#bm-list').addEventListener('pointerleave', () => setHover(0));
   $('.bm-quick').addEventListener('click', e => {
     const b = e.target.closest('[data-pick]'); if (!b || !data) return;
-    const q = query.trim().toLowerCase(), shown = data.devices.filter(d => usable(d) && matches(d, q)); // с учётом поиска
+    const q = query.trim().toLowerCase(), shown = devs().filter(d => usable(d) && matches(d, q)); // с учётом поиска и фильтров
     if (b.dataset.pick === 'none') selected.clear();
     else if (b.dataset.pick === 'all') shown.forEach(d => selected.add(d.id));
     else selected = new Set(lowest(shown));
     hoverId = 0; assignSlots(); save(); render();
   });
   $('#bm-q').addEventListener('input', e => { query = e.target.value; renderList(); });
+  // «Только на связи»: в списке и на графике — только устройства на связи
+  $('#bm-online').checked = onlyOnline;
+  $('#bm-online').addEventListener('change', e => { onlyOnline = e.target.checked; hoverId = 0; save(); if (data) render(); });
   // «АКБ ниже, В»: в списке — только устройства с текущим напряжением ниже значения
   const belowInput = $('#bm-below');
   if (below !== null) belowInput.value = String(below).replace('.', ',');
@@ -227,7 +235,7 @@
   $('#bm-below-clear').addEventListener('click', () => { belowInput.value = ''; below = null; save(); if (data) renderList(); });
   $('#bm-below-only').addEventListener('click', () => {
     const q = query.trim().toLowerCase();
-    selected = new Set(data.devices.filter(d => usable(d) && matches(d, q)).map(d => d.id));
+    selected = new Set(devs().filter(d => usable(d) && matches(d, q)).map(d => d.id));
     hoverId = 0; assignSlots(); save(); render();
   });
   $('#bm-range').addEventListener('click', e => {

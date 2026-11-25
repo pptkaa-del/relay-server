@@ -29,6 +29,7 @@ layout_head('Мониторинг АКБ', 'devices', $login);
     <div class="card-body">
       <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input class="input" id="bm-q" type="search" placeholder="Поиск: название, адрес, ID"></label>
+      <label class="check bm-online" title="Скрыть устройства, которые сейчас не на связи (их выбор сохраняется)"><input type="checkbox" id="bm-online" checked> Только на связи</label>
       <div class="bm-below">
         <label class="field" title="Показать в списке только устройства, у которых текущее напряжение АКБ ниже этого значения">АКБ ниже, В
           <input class="input mono" id="bm-below" type="text" inputmode="decimal" autocomplete="off" maxlength="6" placeholder="все"></label>
