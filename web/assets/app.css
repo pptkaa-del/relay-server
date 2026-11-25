@@ -762,6 +762,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .bm-pick .search { max-width: none; width: 100%; }
 .bm-pick .search svg { top: 50%; transform: translateY(-50%); }
 .bm-quick { margin: 10px 0 8px; flex-wrap: wrap; }
+.bm-online { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
 .bm-below { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .bm-below .field { flex: 0 0 auto; }
 .bm-below .input { width: 110px; }
